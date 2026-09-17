@@ -22,6 +22,9 @@ def test_hacs_json_pins_the_minimum_home_assistant():
     h = json.loads((ROOT / "hacs.json").read_text())
     assert h["homeassistant"] == "2026.9.1"
     assert h["render_readme"] is True
+    # HACS resolves a zip_release repository through its release asset, which
+    # its validator cannot read while this repository is private.
+    assert "zip_release" not in h
 
 
 def test_translations_match_strings():
