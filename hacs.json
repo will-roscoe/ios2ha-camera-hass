@@ -1,5 +1,7 @@
 {
   "name": "ios2ha-camera",
   "homeassistant": "2026.9.1",
-  "render_readme": true
+  "render_readme": true,
+  "zip_release": true,
+  "filename": "ios2ha_camera.zip"
 }
