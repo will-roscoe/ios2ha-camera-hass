@@ -1,1 +1,4 @@
 pytest-homeassistant-custom-component==0.13.364
+# homeassistant.components.camera imports turbojpeg at module level; the test
+# harness does not install a component's own requirements.
+PyTurboJPEG==1.8.3
