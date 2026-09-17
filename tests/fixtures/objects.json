@@ -29,6 +29,16 @@
    "kind": "snapshot",
    "params": {},
    "url": "/api/v1/snapshot/still"
+  },
+  {
+   "formats": [
+    "png"
+   ],
+   "holds_phone": false,
+   "id": "screenshot",
+   "kind": "snapshot",
+   "params": {},
+   "url": "/api/v1/snapshot/screenshot"
   }
  ],
  "objects": [
@@ -1539,5 +1549,5 @@
    "writable": false
   }
  ],
- "objects_version": "sha256:be5914201b06abb3111898282477064b85d298cfbc3029b1ac67b3e6efd6726f"
+ "objects_version": "sha256:98756eaf0864795b5bf9236bbf8a707df84d63b18eac58f25ffe662cb463b688"
 }

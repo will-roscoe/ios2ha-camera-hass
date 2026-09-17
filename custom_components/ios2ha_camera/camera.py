@@ -24,6 +24,11 @@ from .entity import Ios2haEntity
 # A stream is meant to run until the viewer leaves, so nothing here may time it out.
 _STREAM_TIMEOUT = aiohttp.ClientTimeout(total=None, sock_connect=REQUEST_TIMEOUT, sock_read=None)
 _ICONS = {"stream": "mdi:video", "snapshot": "mdi:camera"}
+# Which snapshot stands in as a stream's thumbnail. There is more than one
+# snapshot now -- the camera still and the phone's screen -- and only the still
+# shows what the stream shows, so picking the first in the list would put the
+# phone's home screen under the live view the day the service reorders them.
+_THUMBNAIL_ID = "still"
 
 
 def _descriptor_for(media: dict) -> dict:
@@ -83,10 +88,19 @@ class Ios2haCamera(Ios2haEntity, Camera):
         return await async_aiohttp_proxy_web(self.hass, request, stream)
 
 
+def _thumbnail_source(media: list[dict]) -> dict | None:
+    """The snapshot a stream should use for its thumbnail, or None if there is
+    no snapshot at all: a stream must never be its own thumbnail, or drawing a
+    dashboard would hold the phone."""
+    snapshots = [m for m in media if m.get("kind") == "snapshot" and not m.get("holds_phone")]
+    by_id = {m["id"]: m for m in snapshots}
+    return by_id.get(_THUMBNAIL_ID) or (snapshots[0] if snapshots else None)
+
+
 async def async_setup_entry(hass, entry, async_add_entities) -> None:
     coordinator = entry.runtime_data
     described = {d["object_id"]: d for d in coordinator.descriptors("camera")}
-    still = next((m for m in coordinator.media if m.get("kind") == "snapshot"), None)
+    still = _thumbnail_source(coordinator.media)
     async_add_entities(
         Ios2haCamera(coordinator, described.get(m["id"]) or _descriptor_for(m), m, still)
         for m in coordinator.media

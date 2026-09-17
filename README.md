@@ -16,6 +16,7 @@ break dashboards or automations.
 
 - Home Assistant **2026.9.1** or newer.
 - An ios2ha-camera service **2.6.0** or newer, with `EXPOSE_API` on (the default).
+  The screenshot camera needs **2.7.0** or newer.
 - The service reachable from Home Assistant on its `LIVE_PORT`, e.g.
   `http://camera-host.lan:8099`.
 
@@ -55,10 +56,13 @@ ones MQTT discovery creates.
 
 Cameras come from what the service actually serves over HTTP:
 
-- **still** — the snapshot. Free: it does not wake or hold the phone.
+- **still** — the camera snapshot. Free: it does not wake or hold the phone.
 - **live** and **stacked** — MJPEG streams, proxied only while someone is
-  watching. Their thumbnails come from the snapshot, so a dashboard full of
-  camera cards does not hold the phone open.
+  watching. Their thumbnails come from the still, so a dashboard full of camera
+  cards does not hold the phone open.
+- **screenshot** — the phone's own screen, as the **Phone screenshot** button
+  last captured it. Also free: viewing it never takes a new one, which is the
+  button's job. It shows as unavailable until the button has been pressed once.
 
 Updates are pushed over one long-lived event stream. Nothing polls. If the
 stream drops, the entities go unavailable and the integration reconnects with a
@@ -90,11 +94,10 @@ port.
 
 ## Known gaps
 
-- **No screenshot camera.** The service offers a `screenshot` camera, but
-  publishes the image only as a retained MQTT topic; there is no HTTP route
-  behind it, so this integration does not create that camera rather than point
-  one at a path the service does not serve. The **Phone screenshot** button
-  still works, and the image is still visible over the MQTT path.
+- **The screenshot camera needs service 2.7.0 or newer.** Before that the image
+  was published only as a retained MQTT topic, with no HTTP route, and this
+  integration skips any camera the service offers no route for rather than point
+  one at a path that does not exist.
 - **No HLS or WebRTC.** The streams are MJPEG. The integration does not
   advertise Home Assistant's stream feature, which would promise formats the
   service cannot yet produce.
