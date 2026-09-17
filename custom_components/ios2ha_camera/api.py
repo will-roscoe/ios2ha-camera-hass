@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
 import json
 from typing import Any
 
@@ -44,6 +46,39 @@ class ControlRejected(Ios2haError):
         super().__init__(f"{status}: {error}")
         self.status = status
         self.error = error
+
+
+@dataclass(frozen=True)
+class Event:
+    """One server-sent event: its name and its decoded JSON object."""
+
+    name: str
+    data: dict
+
+
+# No total timeout: the stream is meant to stay open. The service sends a
+# keepalive comment every ~20 s, so a read that quiet for 90 s is a dead link.
+_STREAM_TIMEOUT = aiohttp.ClientTimeout(total=None, sock_connect=REQUEST_TIMEOUT, sock_read=90)
+
+
+def _parse_block(lines: list[str]) -> Event | None:
+    name, data = "message", []
+    for line in lines:
+        if not line or line.startswith(":"):
+            continue
+        field, _, value = line.partition(":")
+        value = value.removeprefix(" ")
+        if field == "event":
+            name = value
+        elif field == "data":
+            data.append(value)
+    if not data:
+        return None
+    try:
+        payload = json.loads("\n".join(data))
+    except ValueError:
+        return None
+    return Event(name, payload) if isinstance(payload, dict) else None
 
 
 class Ios2haClient:
@@ -111,3 +146,32 @@ class Ios2haClient:
         if status >= 400:
             raise ControlRejected(status, str(data.get("error", "")))
         return data
+
+    async def events(self) -> AsyncIterator[Event]:
+        """Yield events until the service closes the stream or the link dies."""
+        try:
+            resp = await self._session.get(
+                self.url(self.routes["events"]),
+                timeout=_STREAM_TIMEOUT,
+                headers={"Accept": "text/event-stream"},
+            )
+        except (aiohttp.ClientError, TimeoutError, OSError) as err:
+            raise CannotConnect(str(err)) from err
+        async with resp:
+            if resp.status == 404:
+                raise ApiDisabled(self.routes["events"])
+            if resp.status != 200:
+                raise CannotConnect(f"events: HTTP {resp.status}")
+            lines: list[str] = []
+            try:
+                async for raw in resp.content:  # aiohttp yields whole lines
+                    line = raw.decode("utf-8").rstrip("\r\n")
+                    if line:
+                        lines.append(line)
+                        continue
+                    event = _parse_block(lines)
+                    lines = []
+                    if event is not None:
+                        yield event
+            except (aiohttp.ClientError, TimeoutError, OSError) as err:
+                raise CannotConnect(str(err)) from err
