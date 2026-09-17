@@ -7,11 +7,13 @@ from typing import Any
 
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .api import NO_VALUE, CannotConnect, ControlRejected
 from .const import DOMAIN, OBJECT_ID_PREFIX
 from .coordinator import Ios2haCoordinator
 
@@ -57,6 +59,17 @@ class Ios2haEntity(CoordinatorEntity[Ios2haCoordinator]):
         if not self.coordinator.connected:
             return False
         return self.state_key is None or self.state_key in self.coordinator.data
+
+    async def write(self, value: Any = NO_VALUE) -> None:
+        """Write through the control route. No optimistic state: the stream reports
+        what the service actually applied, which may not be what was asked for."""
+        name = self.descriptor["object_id"]
+        try:
+            await self.coordinator.client.post_control(name, value)
+        except ControlRejected as err:
+            raise HomeAssistantError(f"{name}: {err.error}") from err
+        except CannotConnect as err:
+            raise HomeAssistantError(f"{name}: the service is unreachable ({err})") from err
 
 
 def setup_platform(domain: str, factory: Callable[[Ios2haCoordinator, dict], Entity]):
