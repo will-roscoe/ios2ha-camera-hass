@@ -35,3 +35,11 @@ def test_fixtures_carry_no_household_details():
         text = f.read_text()
         for needle in ("192.168.", "arcturus", "willroscoe"):
             assert needle not in text, (f.name, needle)
+
+
+def test_strings_contain_no_urls():
+    """Hassfest rejects a URL in a translated string; use a placeholder instead."""
+    for name in ("strings.json", "translations/en.json"):
+        text = (COMP / name).read_text()
+        for scheme in ("http://", "https://"):
+            assert scheme not in text, (name, scheme)
