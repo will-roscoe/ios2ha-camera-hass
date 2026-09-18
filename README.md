@@ -28,9 +28,6 @@ Through HACS, as a custom repository:
 2. Add this repository's URL, category **Integration**.
 3. Find **ios2ha-camera** in HACS, install it, and restart Home Assistant.
 
-While this repository is private, HACS needs a GitHub token with access to it
-(HACS → Configure → personal access token).
-
 ## Configure
 
 **Settings → Devices & services → Add integration → ios2ha-camera**, then enter

@@ -14,18 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # Two of the nine HACS checks read file content out of the repository
-      # rather than the checked-out workspace, and neither can do that while the
-      # repository is private: integration_manifest reports "Got None" and
-      # hacsjson reports the file invalid. Measured on 2026-09-17 -- every
-      # metadata check (topics, description, brands, information, archived,
-      # issues, license) passes, hassfest passes, removing zip_release changed
-      # nothing, and passing GITHUB_TOKEN to the action changed nothing. So the
-      # job reports without failing the workflow. Delete continue-on-error when
-      # the repository goes public, and expect all nine to pass.
       - name: HACS validation
         uses: hacs/action@main
-        continue-on-error: true
         with:
           category: integration
 
