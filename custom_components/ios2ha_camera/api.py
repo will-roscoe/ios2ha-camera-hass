@@ -9,6 +9,7 @@ import json
 from typing import Any
 
 import aiohttp
+from yarl import URL
 
 from .const import INFO_PATH, REQUEST_TIMEOUT, SUPPORTED_API
 
@@ -90,7 +91,27 @@ class Ios2haClient:
         self.routes: dict[str, str] = {}
 
     def url(self, path: str) -> str:
-        return self.base_url + path
+        """Absolute URL for a path the service named.
+
+        Every path but `/info` comes out of `/info`'s routes map or a media
+        descriptor, so these strings are network input rather than constants,
+        and the link carries neither TLS nor authentication by design. Joining
+        them by concatenation would let anything able to answer as the service
+        move the request to a host of its choosing: `"@evil.example/x"` glued to
+        `http://camera-host.lan:8099` parses as userinfo `camera-host.lan:8099`
+        at host `evil.example`, which would hand it Home Assistant's network
+        position and render whatever it returned as a camera.
+
+        So a path must be one this base can actually address: rooted, not
+        protocol-relative, and resolving to the same origin.
+        """
+        if not path.startswith("/") or path.startswith("//"):
+            raise NotIos2ha(f"not a rooted path: {path!r}")
+        base = URL(self.base_url)
+        resolved = base.join(URL(path))
+        if resolved.origin() != base.origin():
+            raise NotIos2ha(f"path leaves {base.origin()}: {path!r}")
+        return str(resolved)
 
     async def _get_json(self, path: str) -> Any:
         try:

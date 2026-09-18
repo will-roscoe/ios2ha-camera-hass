@@ -44,3 +44,24 @@ async def test_one_device_named_after_the_service(hass, setup):
     assert devices[0].name == "iPhone Camera"
     assert (DOMAIN, "ios2ha_camera") in devices[0].identifiers
     assert devices[0].sw_version == INFO["device"]["sw_version"]
+
+
+async def test_a_timestamp_sensor_becomes_a_datetime(hass, setup):
+    """`last_frame` is declared device_class timestamp, and Home Assistant wants
+    a datetime for those; the service sends ISO 8601 text over JSON, which has
+    no datetime of its own. Left as a string it is rejected outright and the
+    entity carries no state at all."""
+    from datetime import datetime
+
+    await setup([SNAPSHOT])
+    st = hass.states.get("sensor.ios2ha_camera_last_frame")
+    assert st.state not in ("unknown", "unavailable"), st.state
+    # Home Assistant renders a timestamp state to whole seconds.
+    assert datetime.fromisoformat(st.state) == datetime.fromisoformat(STATE["last_frame"]).replace(
+        microsecond=0
+    )
+
+
+async def test_unparseable_timestamp_text_is_not_a_crash(hass, setup):
+    await setup([SNAPSHOT, Event("state", {"state": {"last_frame": "not a time"}})])
+    assert hass.states.get("sensor.ios2ha_camera_last_frame").state == "unknown"

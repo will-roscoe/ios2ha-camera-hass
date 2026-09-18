@@ -87,10 +87,18 @@ still holds it, so the order matters:
 
 ## Security
 
-The service's JSON API has **no authentication**, by design, and this
+The service's JSON API has **no authentication** and no TLS, by design, and this
 integration does not add any. Anyone who can reach the port can read the state
 and write the controls. Keep it on a network you trust, and do not forward the
 port.
+
+Because of that, this integration treats everything the service says as input
+rather than fact. The service names its own paths — the routes map in
+`/api/v1/info` and each media descriptor's `url` — and those are checked to
+resolve to the address you configured before any request is made. A path that
+would move the request to another host is refused and logged, so something able
+to answer as the service cannot use Home Assistant's network position to reach
+somewhere else, or have its own content rendered as your camera.
 
 ## Known gaps
 

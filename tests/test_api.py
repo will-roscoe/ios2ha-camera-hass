@@ -126,3 +126,40 @@ async def test_a_rejected_control_raises_with_the_server_error():
             await c.post_control("interval_s", 5)
     await server.close()
     assert err.value.status == 400 and err.value.error == "out of range"
+
+
+@pytest.mark.parametrize(
+    "hostile",
+    [
+        "@evil.example/x",  # the base becomes userinfo, evil.example the host
+        "//evil.example/x",  # protocol-relative
+        "https://evil.example/x",  # absolute
+        "http://evil.example/x",
+        "x/y",  # not absolute: silently relative to nothing
+        "",
+    ],
+)
+def test_a_path_that_leaves_the_configured_host_is_refused(hostile):
+    """Every path but /info is named by the service, so they are network input.
+
+    The link carries no authentication and no TLS, so anything able to answer as
+    the service can choose these strings -- and concatenating them would let it
+    move the request to a host of its choosing, with Home Assistant's network
+    position and the answer rendered as a camera.
+    """
+    c = Ios2haClient(None, "http://camera-host.lan:8099")
+    with pytest.raises(NotIos2ha):
+        c.url(hostile)
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("/api/v1/state", "http://camera-host.lan:8099/api/v1/state"),
+        ("/api/v1/snapshot/still", "http://camera-host.lan:8099/api/v1/snapshot/still"),
+        # Traversal cannot escape an origin, so it is normalised rather than refused.
+        ("/a/../b", "http://camera-host.lan:8099/b"),
+    ],
+)
+def test_a_path_on_the_configured_host_is_kept(path, expected):
+    assert Ios2haClient(None, "http://camera-host.lan:8099").url(path) == expected

@@ -80,3 +80,16 @@ def test_the_thumbnail_source_is_the_still_whatever_the_order():
     # No still at all: fall back to any snapshot rather than none.
     assert _thumbnail_source([shot, live]) is shot
     assert _thumbnail_source([live]) is None
+
+
+async def test_a_media_path_off_the_configured_host_yields_no_image(hass, setup, aioclient_mock):
+    """The service names its own media paths, so one that leaves the configured
+    host is network input gone wrong. No image, and no request made."""
+    from custom_components.ios2ha_camera.api import Ios2haClient
+
+    await setup([SNAPSHOT])
+    entity = hass.data["camera"].get_entity("camera.ios2ha_camera_still")
+    entity.media = dict(entity.media, url="@evil.example/x")
+    assert isinstance(entity.coordinator.client, Ios2haClient)
+    assert await entity.async_camera_image() is None
+    assert aioclient_mock.call_count == 0

@@ -12,15 +12,18 @@ rather than given a URL the service never promised.
 from __future__ import annotations
 
 import asyncio
+import logging
 
 import aiohttp
 from aiohttp import ClientError, web
 from homeassistant.components.camera import Camera, CameraEntityFeature
 from homeassistant.helpers.aiohttp_client import async_aiohttp_proxy_web, async_get_clientsession
 
+from .api import Ios2haError
 from .const import REQUEST_TIMEOUT
 from .entity import Ios2haEntity
 
+_LOGGER = logging.getLogger(__name__)
 # A stream is meant to run until the viewer leaves, so nothing here may time it out.
 _STREAM_TIMEOUT = aiohttp.ClientTimeout(total=None, sock_connect=REQUEST_TIMEOUT, sock_read=None)
 _ICONS = {"stream": "mdi:video", "snapshot": "mdi:camera"}
@@ -67,10 +70,17 @@ class Ios2haCamera(Ios2haEntity, Camera):
         source = self.media if self.media["kind"] == "snapshot" else self.still
         if source is None:
             return None
+        try:
+            url = self.coordinator.client.url(source["url"])
+        except Ios2haError:
+            # A media path that does not belong to the configured service. The
+            # client has already refused it; no image is the right answer.
+            _LOGGER.warning("refusing media path %r", source.get("url"))
+            return None
         session = async_get_clientsession(self.hass)
         try:
             async with asyncio.timeout(REQUEST_TIMEOUT):
-                resp = await session.get(self.coordinator.client.url(source["url"]))
+                resp = await session.get(url)
                 resp.raise_for_status()
                 return await resp.read()
         except ClientError, TimeoutError:
@@ -79,12 +89,15 @@ class Ios2haCamera(Ios2haEntity, Camera):
     async def handle_async_mjpeg_stream(self, request: web.Request) -> web.StreamResponse | None:
         if self.media["kind"] != "stream" or "mjpeg" not in self.media.get("formats", []):
             return None
+        try:
+            url = self.coordinator.client.url(self.media["url"])
+        except Ios2haError:
+            _LOGGER.warning("refusing stream path %r", self.media.get("url"))
+            return None
         session = async_get_clientsession(self.hass)
         # Holds the phone for as long as the viewer stays; the service lets go
         # after its linger once the viewer leaves.
-        stream = session.get(
-            self.coordinator.client.url(self.media["url"]), timeout=_STREAM_TIMEOUT
-        )
+        stream = session.get(url, timeout=_STREAM_TIMEOUT)
         return await async_aiohttp_proxy_web(self.hass, request, stream)
 
 
