@@ -6,13 +6,13 @@
   "manufacturer": "ios2ha-camera",
   "model": "iPhone supervisor",
   "name": "iPhone Camera",
-  "sw_version": "2.7.0 (v2.7.0)"
+  "sw_version": "2.8.0 (v2.8.0)"
  },
  "interfaces": {
   "api": 1,
   "mqtt": 1
  },
- "objects_version": "sha256:98756eaf0864795b5bf9236bbf8a707df84d63b18eac58f25ffe662cb463b688",
+ "objects_version": "sha256:7b87a4d3390070d52fb3180b77f2b5d2706ecbf85eff9e0298bccc379670ef0f",
  "routes": {
   "control": "/api/v1/control/{name}",
   "events": "/api/v1/events",
@@ -20,5 +20,5 @@
   "objects": "/api/v1/objects",
   "state": "/api/v1/state"
  },
- "version": "2.7.0"
+ "version": "2.8.0"
 }

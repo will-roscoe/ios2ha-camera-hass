@@ -35,11 +35,12 @@ async def test_the_screenshot_camera_serves_its_own_image_not_the_still(
     """It is a snapshot in its own right, so it must not borrow the still's
     thumbnail the way a stream does."""
     await setup([SNAPSHOT])
+    # JPEG since service 2.8.0: the phone's lossless PNG was ~9.5 MB.
     aioclient_mock.get(
-        "http://camera-host.lan:8099/api/v1/snapshot/screenshot", content=b"\x89PNG\r\n\x1a\n"
+        "http://camera-host.lan:8099/api/v1/snapshot/screenshot", content=b"\xff\xd8\xffshot"
     )
     image = await async_get_image(hass, "camera.ios2ha_camera_screenshot")
-    assert image.content == b"\x89PNG\r\n\x1a\n"
+    assert image.content == b"\xff\xd8\xffshot"
 
 
 async def test_every_camera_thumbnail_uses_the_snapshot_route(hass, setup, aioclient_mock):
@@ -93,3 +94,11 @@ async def test_a_media_path_off_the_configured_host_yields_no_image(hass, setup,
     assert isinstance(entity.coordinator.client, Ios2haClient)
     assert await entity.async_camera_image() is None
     assert aioclient_mock.call_count == 0
+
+
+def test_the_screenshot_is_advertised_as_jpeg():
+    """Service 2.8.0 re-encodes it; a client reads `formats` rather than guessing
+    from the path, and the fixtures should keep saying so."""
+    shot = next(m for m in OBJECTS["media"] if m["id"] == "screenshot")
+    assert shot["formats"] == ["jpeg"]
+    assert shot["holds_phone"] is False
