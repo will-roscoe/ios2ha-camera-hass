@@ -56,9 +56,17 @@ class Ios2haEntity(CoordinatorEntity[Ios2haCoordinator]):
 
     @property
     def available(self) -> bool:
-        if not self.coordinator.connected:
-            return False
-        return self.state_key is None or self.state_key in self.coordinator.data
+        """Availability tracks the link, and nothing else.
+
+        A key missing from the state is not an unavailable entity, it is one
+        with no value yet -- which Home Assistant already has a word for, and
+        `native_value` returning None says it. The difference matters for a
+        control: an unavailable entity cannot be written to, while the service
+        will happily accept the write that gives the setting its first value.
+        The three black level overrides are exactly that case, and under MQTT
+        they read unknown and stayed settable.
+        """
+        return self.coordinator.connected
 
     async def write(self, value: Any = NO_VALUE) -> None:
         """Write through the control route. No optimistic state: the stream reports

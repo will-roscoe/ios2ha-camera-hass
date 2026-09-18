@@ -65,3 +65,19 @@ async def test_a_timestamp_sensor_becomes_a_datetime(hass, setup):
 async def test_unparseable_timestamp_text_is_not_a_crash(hass, setup):
     await setup([SNAPSHOT, Event("state", {"state": {"last_frame": "not a time"}})])
     assert hass.states.get("sensor.ios2ha_camera_last_frame").state == "unknown"
+
+
+async def test_a_control_with_no_value_yet_is_still_settable(hass, setup):
+    """The three black level overrides carry a state_key the service only
+    publishes once the override is set, so before that they have no value.
+
+    That must read as unknown, not unavailable: an unavailable entity cannot be
+    written to, and the service would accept the write perfectly well -- which
+    is exactly how the setting gets its first value. Under MQTT these showed as
+    unknown and stayed settable, and the two paths must not differ.
+    """
+    await setup([SNAPSHOT])
+    assert "black_level_0" not in STATE, "fixture no longer covers the case"
+    st = hass.states.get("number.ios2ha_camera_black_level_0")
+    assert st.state == "unknown"
+    assert st.attributes.get("min") == 0
