@@ -102,3 +102,49 @@ def test_the_screenshot_is_advertised_as_jpeg():
     shot = next(m for m in OBJECTS["media"] if m["id"] == "screenshot")
     assert shot["formats"] == ["jpeg"]
     assert shot["holds_phone"] is False
+
+
+async def _first_part(resp, marker, limit=4096):
+    """Read an endless multipart response until `marker` shows up, or `limit` bytes."""
+    seen = b""
+    while marker not in seen and len(seen) < limit:
+        chunk = await resp.content.read(256)
+        if not chunk:
+            break
+        seen += chunk
+    return seen
+
+
+async def test_the_still_camera_opens_as_a_stream_of_its_stills(
+    hass, setup, aioclient_mock, hass_client
+):
+    """Home Assistant's camera dialog shows a camera without HLS or WebRTC through
+    /api/camera_proxy_stream, and a None from handle_async_mjpeg_stream is a 502
+    there. That is what the still and the screenshot answered until 0.4.1:
+    open either in Home Assistant and there was no picture at all."""
+    await setup([SNAPSHOT])
+    aioclient_mock.get(
+        "http://camera-host.lan:8099/api/v1/snapshot/still", content=b"\xff\xd8still"
+    )
+    aioclient_mock.get(
+        "http://camera-host.lan:8099/api/v1/snapshot/screenshot", content=b"\xff\xd8shot"
+    )
+    client = await hass_client()
+    for entity, body in (("still", b"\xff\xd8still"), ("screenshot", b"\xff\xd8shot")):
+        resp = await client.get(f"/api/camera_proxy_stream/camera.ios2ha_camera_{entity}")
+        assert resp.status == 200, entity
+        assert "multipart/x-mixed-replace" in resp.headers["Content-Type"]
+        assert body in await _first_part(resp, body), entity
+        resp.close()
+
+
+async def test_a_snapshot_camera_redraws_slowly(hass, setup):
+    """A still changes every few minutes and is fetched whole each redraw, so
+    redrawing it twice a second -- the default -- would move ~400 KB/s for as
+    long as the dialog stays open, through the tunnel when away from home."""
+    from homeassistant.components.camera import DATA_COMPONENT
+
+    await setup([SNAPSHOT])
+    for entity in ("still", "screenshot"):
+        cam = hass.data[DATA_COMPONENT].get_entity(f"camera.ios2ha_camera_{entity}")
+        assert cam.frame_interval >= 5, entity
