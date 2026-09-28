@@ -32,6 +32,11 @@ _ICONS = {"stream": "mdi:video", "snapshot": "mdi:camera"}
 # shows what the stream shows, so picking the first in the list would put the
 # phone's home screen under the live view the day the service reorders them.
 _THUMBNAIL_ID = "still"
+# How often an open snapshot camera redraws. A still changes every few minutes and
+# a screenshot only when its button is pressed, and each redraw fetches the whole
+# JPEG, so Home Assistant's default of twice a second would move ~400 KB/s for as
+# long as the dialog stayed open -- through the tunnel, when viewed away from home.
+_SNAPSHOT_FRAME_INTERVAL_S = 5.0
 
 
 def _descriptor_for(media: dict) -> dict:
@@ -59,6 +64,8 @@ class Ios2haCamera(Ios2haEntity, Camera):
         Camera.__init__(self)
         self.media = media
         self.still = still
+        if media["kind"] == "snapshot":
+            self._attr_frame_interval = _SNAPSHOT_FRAME_INTERVAL_S
 
     @property
     def available(self) -> bool:
@@ -88,7 +95,12 @@ class Ios2haCamera(Ios2haEntity, Camera):
 
     async def handle_async_mjpeg_stream(self, request: web.Request) -> web.StreamResponse | None:
         if self.media["kind"] != "stream" or "mjpeg" not in self.media.get("formats", []):
-            return None
+            # Home Assistant's camera dialog shows a camera without HLS or WebRTC
+            # through this route, and returning None here is a 502 there -- an
+            # open still or screenshot showed nothing at all. The base class
+            # serves a stream of async_camera_image instead, which is exactly a
+            # snapshot redrawn every frame_interval.
+            return await super().handle_async_mjpeg_stream(request)
         try:
             url = self.coordinator.client.url(self.media["url"])
         except Ios2haError:
