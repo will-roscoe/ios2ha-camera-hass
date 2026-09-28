@@ -1,5 +1,11 @@
 # ios2ha-camera for Home Assistant
 
+<!-- ghtools:sync status START — generated from the status branch, do not edit here -->
+
+<img src="https://github.com/will-roscoe/ios2ha-camera-hass/raw/ghtools-status/status.svg" alt="will-roscoe/ios2ha-camera-hass status" width="900">
+
+<!-- ghtools:sync status END -->
+
 A Home Assistant integration for the
 [ios2ha-camera](https://will-roscoe.github.io/ios2ha-camera/) service, which turns an
 iPhone into a camera and a set of controls. It builds every entity from the
