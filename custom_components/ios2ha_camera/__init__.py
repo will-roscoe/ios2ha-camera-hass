@@ -5,10 +5,12 @@ from __future__ import annotations
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.loader import async_get_integration
 
 from .api import Ios2haClient
 from .const import CONF_URL, DOMAIN, PLATFORMS
 from .coordinator import Ios2haCoordinator
+from .frontend import async_register_card
 from .services import async_register_actions, async_unregister_actions
 from .views import Ios2haMediaView
 
@@ -27,6 +29,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: Ios2haConfigEntry) -> bo
     if not hass.data.get(f"{DOMAIN}_view"):
         hass.http.register_view(Ios2haMediaView(hass))
         hass.data[f"{DOMAIN}_view"] = True
+    # The card, served by the integration itself and registered as a resource.
+    await async_register_card(hass, str((await async_get_integration(hass, DOMAIN)).version))
     # Started after the platforms exist, so the first snapshot lands on entities
     # that are already there to receive it.
     coordinator.start()
