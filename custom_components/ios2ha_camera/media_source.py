@@ -1,7 +1,8 @@
 """The service's video media in Home Assistant's Media panel.
 
 A `video` media descriptor (service 2.16.0: the timelapses) names the state key that
-lists its items, each with the url it is served at. Browsing lists them per camera;
+lists its items -- `{"items": {name: {..., "url": ...}}}` -- each with the url it is
+served at. Browsing lists them per camera;
 playing one resolves to this integration's view (views.py), a relative path that
 Home Assistant signs, so it plays wherever Home Assistant can be reached.
 """
@@ -38,7 +39,8 @@ def listed(coordinator, media_id: str) -> tuple[dict | None, dict]:
     media = next((m for m in coordinator.media
                   if m.get("id") == media_id and m.get("kind") == "video" and m.get("catalogue")),
                  None)
-    items = coordinator.data.get(media["catalogue"]) if media else None
+    catalogue = coordinator.data.get(media["catalogue"]) if media else None
+    items = catalogue.get("items") if isinstance(catalogue, dict) else None
     return media, items if isinstance(items, dict) else {}
 
 

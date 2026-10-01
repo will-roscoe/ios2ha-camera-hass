@@ -1703,7 +1703,7 @@
    "writable": true
   },
   {
-   "attributes_key": null,
+   "attributes_key": "timelapse_last",
    "category": "diagnostic",
    "description": "What the last timelapse request came to: queued, building, built, deleted, or why it was refused or failed -- an invalid spec, a full queue, a duplicate, no stills in the span, or an encoder error. Each outcome is also an event with the reason.",
    "device_class": "enum",
@@ -1724,7 +1724,8 @@
     "rejected_duplicate",
     "rejected_unknown",
     "failed_no_stills",
-    "failed_encoder"
+    "failed_encoder",
+    "off"
    ],
    "precision": null,
    "state_class": null,

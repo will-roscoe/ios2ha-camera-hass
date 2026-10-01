@@ -1,6 +1,7 @@
 """Sensors, entirely from descriptors."""
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
+from homeassistant.const import MATCH_ALL
 from homeassistant.util import dt as dt_util
 
 from .entity import Ios2haEntity, setup_platform
@@ -47,4 +48,17 @@ class Ios2haSensor(Ios2haEntity, SensorEntity):
         return value
 
 
-async_setup_entry = setup_platform("sensor", Ios2haSensor)
+class Ios2haAttributedSensor(Ios2haSensor):
+    """A sensor whose descriptor names an attributes_key, such as the timelapse
+    catalogue: kept out of the recorder, since a catalogue can outgrow its 16 KiB
+    and its history is of no use."""
+
+    _unrecorded_attributes = frozenset({MATCH_ALL})
+
+
+def _sensor(coordinator, descriptor):
+    cls = Ios2haAttributedSensor if descriptor.get("attributes_key") else Ios2haSensor
+    return cls(coordinator, descriptor)
+
+
+async_setup_entry = setup_platform("sensor", _sensor)
