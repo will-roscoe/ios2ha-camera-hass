@@ -55,6 +55,14 @@ class Ios2haEntity(CoordinatorEntity[Ios2haCoordinator]):
         return self.coordinator.data.get(self.state_key) if self.state_key else None
 
     @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """The state value the descriptor names as attributes, such as the
+        timelapse catalogue. Only ever an object: anything else is ignored."""
+        key = self.descriptor.get("attributes_key")
+        attrs = self.coordinator.data.get(key) if key else None
+        return attrs if isinstance(attrs, dict) else None
+
+    @property
     def available(self) -> bool:
         """Availability tracks the link, and nothing else.
 

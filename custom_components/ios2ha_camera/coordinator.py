@@ -34,6 +34,9 @@ class Ios2haCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.info: dict = {}
         self.objects: list[dict] = []
         self.media: list[dict] = []
+        # Writes whose value is a JSON object (service 2.16.0 and later): each
+        # becomes a Home Assistant action, built from its fields.
+        self.actions: list[dict] = []
         self.objects_version: str | None = None
         self.connected = False
         self.data = {}
@@ -65,6 +68,7 @@ class Ios2haCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _use(self, doc: dict) -> None:
         self.objects = list(doc.get("objects", []))
         self.media = list(doc.get("media", []))
+        self.actions = list(doc.get("actions", []))
         self.objects_version = doc.get("objects_version")
 
     async def _refresh_objects(self) -> None:
