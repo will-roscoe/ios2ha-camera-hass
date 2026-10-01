@@ -50,7 +50,7 @@ ios2ha_camera:
           const picture = camera?.attributes?.entity_picture;
           if (!picture) return '';
           const still = hass.states[c.last_still ?? 'sensor.ios2ha_camera_last_still']?.state ?? '';
-          return `${picture}${picture.includes('?') ? '&' : '?'}v=${encodeURIComponent(still)}`;
+          return picture + (picture.includes('?') ? '&' : '?') + 'v=' + encodeURIComponent(still);
         })()}") !important;
       background-size: cover !important;
       background-position: center !important;

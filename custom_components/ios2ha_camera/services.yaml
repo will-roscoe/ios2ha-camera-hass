@@ -1,6 +1,7 @@
-# The service's actions. Their forms are built at runtime from what the camera's
-# service declares (services.py), which replaces these descriptions; this file is
-# what Home Assistant shows before that, and what hassfest requires.
+# The service's actions. Home Assistant shows the description services.py builds
+# from what the camera's service declares, which it sets as each action is
+# registered; this file is read only for an action without one. hassfest requires
+# it of any integration that registers actions.
 build_timelapse:
   name: Build timelapse
   description: >-
