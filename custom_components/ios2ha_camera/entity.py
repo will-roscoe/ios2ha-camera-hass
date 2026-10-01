@@ -46,6 +46,10 @@ class Ios2haEntity(CoordinatorEntity[Ios2haCoordinator]):
         self.entity_id = f"{domain}.{OBJECT_ID_PREFIX}_{object_id}"
         self._attr_unique_id = f"{coordinator.entry.unique_id}-{domain}-{object_id}"
         self._attr_name = descriptor.get("name")
+        # Which of the service's objects this is, whatever its entity id becomes (a
+        # rename, or `_2` for a second camera): the card finds entities by it. The
+        # explicit name above still wins, so no translation file is needed.
+        self._attr_translation_key = object_id
         self._attr_icon = descriptor.get("icon")
         self._attr_entity_category = _CATEGORY.get(descriptor.get("category"))
         self._attr_device_info = device_info(coordinator)

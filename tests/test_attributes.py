@@ -49,3 +49,21 @@ async def test_attributes_from_the_service_are_not_recorded(hass, setup):
     assert MATCH_ALL in entity._unrecorded_attributes
     battery = hass.data["entity_components"]["sensor"].get_entity("sensor.ios2ha_camera_battery")
     assert MATCH_ALL not in battery._unrecorded_attributes
+
+
+async def test_every_entity_says_which_object_it_is(hass, setup):
+    """Entity ids can change -- a rename, or `_2` for a second camera -- so the card
+    finds an entity by its translation key, which is the service's object id."""
+    from homeassistant.helpers import entity_registry as er
+
+    await setup([SNAPSHOT])
+    reg = er.async_get(hass)
+    assert reg.async_get("sensor.ios2ha_camera_timelapses").translation_key == "timelapses"
+    assert reg.async_get("camera.ios2ha_camera_still").translation_key == "still"
+    assert reg.async_get("number.ios2ha_camera_interval_s").translation_key == "interval_s"
+    # a translation key must not take over the names the service gives
+    assert (
+        hass.states.get("sensor.ios2ha_camera_timelapses")
+        .attributes["friendly_name"]
+        .endswith("Timelapses")
+    )

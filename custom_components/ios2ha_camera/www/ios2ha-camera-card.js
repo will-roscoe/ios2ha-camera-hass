@@ -20,8 +20,12 @@ const STREAMS = new Set(["live", "stacked"]);   // keep the phone awake while sh
 const REGION = ["colour_region_x0", "colour_region_y0", "colour_region_x1", "colour_region_y1"];
 const SECTIONS = [[null, "Controls"], ["config", "Configuration"], ["diagnostic", "Diagnostics"]];
 
-function objectId(entityId) {
-  const rest = entityId.split(".")[1] ?? "";
+// Which of the service's objects an entity is. The integration sets each entity's
+// translation key to it, which survives a renamed entity id and the `_2` a second
+// camera's ids get; the id itself is only a fallback for an older integration.
+function objectId(entry) {
+  if (entry.translation_key) return entry.translation_key;
+  const rest = entry.entity_id.split(".")[1] ?? "";
   return rest.startsWith(PREFIX) ? rest.slice(PREFIX.length) : rest;
 }
 
@@ -100,6 +104,7 @@ class Ios2haCameraCard extends HTMLElement {
     this._config = { default_view: "still", ...config };
     this._ready = null;           // rebuilt for the new config
     this._view = null;
+    this._entry = null;           // the device may have changed
     if (this._hass) this._render();
   }
 
@@ -123,7 +128,7 @@ class Ios2haCameraCard extends HTMLElement {
   }
 
   _find(domain, oid) {
-    return this._entities().find((e) => e.entity_id.startsWith(`${domain}.`) && objectId(e.entity_id) === oid);
+    return this._entities().find((e) => e.entity_id.startsWith(`${domain}.`) && objectId(e) === oid);
   }
 
   _state(domain, oid) {
@@ -164,9 +169,9 @@ class Ios2haCameraCard extends HTMLElement {
                    this._tabs, this._stage, this._below, this._rowsHost));
     this._cameras = this._entities()
       .filter((e) => e.entity_id.startsWith("camera."))
-      .sort((a, b) => CAMERA_ORDER.indexOf(objectId(a.entity_id)) - CAMERA_ORDER.indexOf(objectId(b.entity_id)));
-    this._views = this._cameras.map((e) => ({ id: objectId(e.entity_id), entity: e.entity_id,
-                                               label: objectId(e.entity_id) }));
+      .sort((a, b) => CAMERA_ORDER.indexOf(objectId(a)) - CAMERA_ORDER.indexOf(objectId(b)));
+    this._views = this._cameras.map((e) => ({ id: objectId(e), entity: e.entity_id,
+                                               label: objectId(e) }));
     if (this._find("sensor", "timelapses")) this._views.push({ id: "timelapses", label: "timelapses" });
     this._buildRows();
     const first = this._views.find((v) => v.id === this._config.default_view) ?? this._views[0];
