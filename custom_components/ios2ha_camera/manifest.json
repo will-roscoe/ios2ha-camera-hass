@@ -1,6 +1,10 @@
 {
   "domain": "ios2ha_camera",
   "name": "ios2ha-camera",
+  "after_dependencies": [
+    "frontend",
+    "lovelace"
+  ],
   "codeowners": [
     "@will-roscoe"
   ],
