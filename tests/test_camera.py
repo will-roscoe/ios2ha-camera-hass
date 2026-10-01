@@ -8,7 +8,8 @@ async def test_a_camera_per_media_descriptor_with_mqtt_ids(hass, setup):
     await setup([SNAPSHOT])
     reg = er.async_get(hass)
     for m in OBJECTS["media"]:
-        assert reg.async_get(f"camera.ios2ha_camera_{m['id']}") is not None, m["id"]
+        if m["kind"] in ("stream", "snapshot"):
+            assert reg.async_get(f"camera.ios2ha_camera_{m['id']}") is not None, m["id"]
 
 
 async def test_every_described_camera_has_a_route_behind_it(hass, setup):
@@ -148,3 +149,11 @@ async def test_a_snapshot_camera_redraws_slowly(hass, setup):
     for entity in ("still", "screenshot"):
         cam = hass.data[DATA_COMPONENT].get_entity(f"camera.ios2ha_camera_{entity}")
         assert cam.frame_interval >= 5, entity
+
+
+async def test_video_media_is_not_a_camera(hass, setup):
+    """The service's timelapses are video files listed in a catalogue (media
+    source), not a camera: a camera on a path template would show nothing."""
+    await setup([SNAPSHOT])
+    assert hass.states.get("camera.ios2ha_camera_timelapse") is None
+    assert hass.states.get("camera.ios2ha_camera_still") is not None

@@ -1,12 +1,17 @@
 {
   "domain": "ios2ha_camera",
   "name": "ios2ha-camera",
+  "after_dependencies": [
+    "frontend",
+    "lovelace"
+  ],
   "codeowners": [
     "@will-roscoe"
   ],
   "config_flow": true,
   "dependencies": [
-    "http"
+    "http",
+    "media_source"
   ],
   "documentation": "https://github.com/will-roscoe/ios2ha-camera-hass",
   "integration_type": "device",

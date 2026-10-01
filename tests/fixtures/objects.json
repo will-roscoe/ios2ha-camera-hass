@@ -1,4 +1,71 @@
 {
+ "actions": [
+  {
+   "description": "Build a timelapse from the archive: a rolling range (12h, 24h, 7d, 1mo) or a span of your own, with how to render it. Built one at a time; the timelapse sensor says what happened.",
+   "fields": {
+    "end": {
+     "description": "End of that span; now if left out.",
+     "type": "datetime"
+    },
+    "every": {
+     "default": 1,
+     "description": "Use every Nth still: 2 halves the length.",
+     "max": 1000,
+     "min": 1,
+     "type": "int"
+    },
+    "fps": {
+     "default": 15,
+     "description": "Frames of video per second; each still is one frame.",
+     "max": 60,
+     "min": 1,
+     "type": "int"
+    },
+    "name": {
+     "description": "Name for a span of your own: up to 48 of a-z, 0-9, _ and -.",
+     "type": "str"
+    },
+    "quality": {
+     "default": 23,
+     "description": "x264 CRF: lower is sharper and bigger.",
+     "max": 40,
+     "min": 15,
+     "type": "int"
+    },
+    "range": {
+     "description": "A rolling range ending now, rebuilt as last_<range>. Give this or start.",
+     "options": [
+      "12h",
+      "24h",
+      "7d",
+      "1mo"
+     ],
+     "type": "select"
+    },
+    "start": {
+     "description": "Start of a span of your own, ISO 8601; without a zone it is the service's local time.",
+     "type": "datetime"
+    },
+    "width": {
+     "description": "Width in pixels, even; the stills' own if left out.",
+     "max": 3840,
+     "min": 160,
+     "type": "int"
+    }
+   },
+   "name": "build_timelapse"
+  },
+  {
+   "description": "Delete a built timelapse by name.",
+   "fields": {
+    "name": {
+     "description": "The timelapse to delete.",
+     "type": "str"
+    }
+   },
+   "name": "delete_timelapse"
+  }
+ ],
  "media": [
   {
    "formats": [
@@ -39,6 +106,17 @@
    "kind": "snapshot",
    "params": {},
    "url": "/api/v1/snapshot/screenshot"
+  },
+  {
+   "catalogue": "timelapse_catalogue",
+   "formats": [
+    "mp4"
+   ],
+   "holds_phone": false,
+   "id": "timelapse",
+   "kind": "video",
+   "params": {},
+   "url": "/api/v1/timelapse/{name}.mp4"
   }
  ],
  "objects": [
@@ -1546,6 +1624,152 @@
    "state_key": "keyboard_connected",
    "step": null,
    "unit": null,
+   "writable": false
+  },
+  {
+   "attributes_key": null,
+   "category": null,
+   "description": "Build a timelapse of the last 12h from the archive, replacing last_12h. For a span of your own, or another frame rate or size, use the build_timelapse action.",
+   "device_class": null,
+   "domain": "button",
+   "hi": null,
+   "icon": "mdi:movie-open-plus",
+   "lo": null,
+   "name": "Build 12h timelapse",
+   "object_id": "build_timelapse_12h",
+   "options": null,
+   "precision": null,
+   "state_class": null,
+   "state_key": null,
+   "step": null,
+   "unit": null,
+   "writable": true
+  },
+  {
+   "attributes_key": null,
+   "category": null,
+   "description": "Build a timelapse of the last 24h from the archive, replacing last_24h. For a span of your own, or another frame rate or size, use the build_timelapse action.",
+   "device_class": null,
+   "domain": "button",
+   "hi": null,
+   "icon": "mdi:movie-open-plus",
+   "lo": null,
+   "name": "Build 24h timelapse",
+   "object_id": "build_timelapse_24h",
+   "options": null,
+   "precision": null,
+   "state_class": null,
+   "state_key": null,
+   "step": null,
+   "unit": null,
+   "writable": true
+  },
+  {
+   "attributes_key": null,
+   "category": null,
+   "description": "Build a timelapse of the last 7d from the archive, replacing last_7d. For a span of your own, or another frame rate or size, use the build_timelapse action.",
+   "device_class": null,
+   "domain": "button",
+   "hi": null,
+   "icon": "mdi:movie-open-plus",
+   "lo": null,
+   "name": "Build 7d timelapse",
+   "object_id": "build_timelapse_7d",
+   "options": null,
+   "precision": null,
+   "state_class": null,
+   "state_key": null,
+   "step": null,
+   "unit": null,
+   "writable": true
+  },
+  {
+   "attributes_key": null,
+   "category": null,
+   "description": "Build a timelapse of the last 1mo from the archive, replacing last_1mo. For a span of your own, or another frame rate or size, use the build_timelapse action.",
+   "device_class": null,
+   "domain": "button",
+   "hi": null,
+   "icon": "mdi:movie-open-plus",
+   "lo": null,
+   "name": "Build 1mo timelapse",
+   "object_id": "build_timelapse_1mo",
+   "options": null,
+   "precision": null,
+   "state_class": null,
+   "state_key": null,
+   "step": null,
+   "unit": null,
+   "writable": true
+  },
+  {
+   "attributes_key": "timelapse_last",
+   "category": "diagnostic",
+   "description": "What the last timelapse request came to: queued, building, built, deleted, or why it was refused or failed -- an invalid spec, a full queue, a duplicate, no stills in the span, or an encoder error. Each outcome is also an event with the reason.",
+   "device_class": "enum",
+   "domain": "sensor",
+   "hi": null,
+   "icon": "mdi:movie-open-cog",
+   "lo": null,
+   "name": "Timelapse",
+   "object_id": "timelapse",
+   "options": [
+    "idle",
+    "queued",
+    "building",
+    "built",
+    "deleted",
+    "rejected_invalid",
+    "rejected_busy",
+    "rejected_duplicate",
+    "rejected_unknown",
+    "failed_no_stills",
+    "failed_encoder",
+    "off"
+   ],
+   "precision": null,
+   "state_class": null,
+   "state_key": "timelapse",
+   "step": null,
+   "unit": null,
+   "writable": false
+  },
+  {
+   "attributes_key": null,
+   "category": "diagnostic",
+   "description": "How far the timelapse being built has got, in per cent of its frames.",
+   "device_class": null,
+   "domain": "sensor",
+   "hi": null,
+   "icon": "mdi:progress-clock",
+   "lo": null,
+   "name": "Timelapse progress",
+   "object_id": "timelapse_progress",
+   "options": null,
+   "precision": null,
+   "state_class": "measurement",
+   "state_key": "timelapse_progress",
+   "step": null,
+   "unit": "%",
+   "writable": false
+  },
+  {
+   "attributes_key": "timelapse_catalogue",
+   "category": null,
+   "description": "How many timelapses are built. Its attributes are the catalogue: each by name, with its span, frames, frame rate, length, size and the url it is served at.",
+   "device_class": null,
+   "domain": "sensor",
+   "hi": null,
+   "icon": "mdi:filmstrip-box-multiple",
+   "lo": null,
+   "name": "Timelapses",
+   "object_id": "timelapses",
+   "options": null,
+   "precision": null,
+   "state_class": "measurement",
+   "state_key": "timelapses",
+   "step": null,
+   "unit": "timelapses",
    "writable": false
   }
  ],

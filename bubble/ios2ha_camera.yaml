@@ -1,0 +1,75 @@
+ios2ha_camera:
+  name: iPhone Camera
+  version: "1.0.0"
+  creator: will-roscoe
+  link: https://github.com/will-roscoe/ios2ha-camera-hass
+  supported:
+    - button
+  description: |
+    Turns a Bubble button into the ios2ha camera: the latest still fills the card,
+    refreshed when a new one is made, its name and state stay readable over it,
+    and a bar along the bottom shows a timelapse being built. Pair it with
+    sub-buttons for capture, focus, level horizon and timelapses -- the
+    integration's README has an example card.
+    <br><br>
+    <code-block><pre>
+    ios2ha_camera:
+      camera: camera.ios2ha_camera_still
+      last_still: sensor.ios2ha_camera_last_still
+      timelapse: sensor.ios2ha_camera_timelapse
+      progress: sensor.ios2ha_camera_timelapse_progress
+    </pre></code-block>
+  editor:
+    - name: camera
+      label: Camera whose picture fills the card
+      selector:
+        entity:
+          domain: camera
+    - name: last_still
+      label: Last still sensor (refreshes the picture)
+      selector:
+        entity:
+          domain: sensor
+    - name: timelapse
+      label: Timelapse sensor (shows the build bar)
+      selector:
+        entity:
+          domain: sensor
+    - name: progress
+      label: Timelapse progress sensor
+      selector:
+        entity:
+          domain: sensor
+  code: |
+    .bubble-button-card-container {
+      background-image:
+        linear-gradient(to top, rgba(0, 0, 0, .6), rgba(0, 0, 0, .05) 65%),
+        url("${(() => {
+          const c = this.config.ios2ha_camera ?? {};
+          const camera = hass.states[c.camera ?? 'camera.ios2ha_camera_still'];
+          const picture = camera?.attributes?.entity_picture;
+          if (!picture) return '';
+          const still = hass.states[c.last_still ?? 'sensor.ios2ha_camera_last_still']?.state ?? '';
+          return picture + (picture.includes('?') ? '&' : '?') + 'v=' + encodeURIComponent(still);
+        })()}") !important;
+      background-size: cover !important;
+      background-position: center !important;
+    }
+    .bubble-background {
+      opacity: 0 !important;
+    }
+    .bubble-name, .bubble-state {
+      color: #fff !important;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, .85);
+    }
+    .bubble-button-card-container::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      height: 4px;
+      background: var(--primary-color);
+      transition: width 1s linear;
+      width: ${Number(hass.states[(this.config.ios2ha_camera ?? {}).progress ?? 'sensor.ios2ha_camera_timelapse_progress']?.state) || 0}%;
+      display: ${hass.states[(this.config.ios2ha_camera ?? {}).timelapse ?? 'sensor.ios2ha_camera_timelapse']?.state === 'building' ? 'block' : 'none'};
+    }

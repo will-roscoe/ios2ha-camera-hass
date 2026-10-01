@@ -86,7 +86,7 @@ async def test_descriptors_are_cached_and_reused_when_the_version_matches(hass):
     second = Ios2haCoordinator(hass, entry, second_client)
     await second.async_prepare()
     assert second_client.get_objects.await_count == 0
-    assert len(second.objects) == len(first.objects) == 86
+    assert len(second.objects) == len(first.objects) == len(load_fixture_json("objects")["objects"])
 
 
 async def test_an_unreachable_service_with_a_cache_still_prepares(hass):
@@ -96,7 +96,8 @@ async def test_an_unreachable_service_with_a_cache_still_prepares(hass):
     down.get_info = AsyncMock(side_effect=CannotConnect("down"))
     coord = Ios2haCoordinator(hass, entry, down)
     await coord.async_prepare()
-    assert len(coord.objects) == 86 and not coord.connected
+    assert len(coord.objects) == len(load_fixture_json("objects")["objects"])
+    assert not coord.connected
 
 
 def test_descriptors_filter_by_domain_and_skip_unknown_ones(hass):

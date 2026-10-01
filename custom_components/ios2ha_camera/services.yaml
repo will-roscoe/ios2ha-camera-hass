@@ -1,0 +1,99 @@
+# The service's actions. Home Assistant shows the description services.py builds
+# from what the camera's service declares, which it sets as each action is
+# registered; this file is read only for an action without one. hassfest requires
+# it of any integration that registers actions.
+build_timelapse:
+  name: Build timelapse
+  description: >-
+    Build a timelapse from the camera's archive: a rolling range, or a span of your
+    own, with how to render it. Built one at a time; sensor.ios2ha_camera_timelapse
+    says what happened.
+  fields:
+    range:
+      name: Range
+      description: A rolling range ending now, rebuilt as last_<range>. Give this or start.
+      required: false
+      selector:
+        select:
+          options: ["12h", "24h", "7d", "1mo"]
+    start:
+      name: Start
+      description: Start of a span of your own, in Home Assistant's time zone.
+      required: false
+      selector:
+        datetime:
+    end:
+      name: End
+      description: End of that span; now if left out.
+      required: false
+      selector:
+        datetime:
+    name:
+      name: Name
+      description: Name for a span of your own (a-z, 0-9, _ and -).
+      required: false
+      selector:
+        text:
+    fps:
+      name: Frames per second
+      description: Frames of video per second; each still is one frame.
+      required: false
+      example: 15
+      selector:
+        number:
+          min: 1
+          max: 60
+          mode: box
+    width:
+      name: Width
+      description: Width in pixels, even; the stills' own if left out.
+      required: false
+      selector:
+        number:
+          min: 160
+          max: 3840
+          mode: box
+    every:
+      name: Every
+      description: Use every Nth still.
+      required: false
+      example: 1
+      selector:
+        number:
+          min: 1
+          max: 1000
+          mode: box
+    quality:
+      name: Quality
+      description: x264 CRF, lower is sharper and bigger.
+      required: false
+      example: 23
+      selector:
+        number:
+          min: 15
+          max: 40
+          mode: box
+    device_id:
+      name: Camera
+      description: Which camera, when more than one is set up.
+      required: false
+      selector:
+        device:
+          integration: ios2ha_camera
+delete_timelapse:
+  name: Delete timelapse
+  description: Delete a built timelapse by name.
+  fields:
+    name:
+      name: Name
+      description: The timelapse to delete.
+      required: true
+      selector:
+        text:
+    device_id:
+      name: Camera
+      description: Which camera, when more than one is set up.
+      required: false
+      selector:
+        device:
+          integration: ios2ha_camera

@@ -72,6 +72,73 @@ stream drops, the entities go unavailable and the integration reconnects with a
 backoff; the first message after a reconnect is a full snapshot, so the state
 you see is never a stale partial one.
 
+## Timelapses (service 2.16.0 and later)
+
+The service builds timelapses from its own archive, on request; this integration
+gives you all of it through Home Assistant:
+
+- **Buttons** `button.ios2ha_camera_build_timelapse_12h` / `_24h` / `_7d` / `_1mo`
+  build that rolling range.
+- **The action `ios2ha_camera.build_timelapse`** builds anything else: a `range`,
+  or a `start` and `end` (in Home Assistant's time zone), and `fps`, `width`,
+  `every`, `quality`, `name`. Its form in Home Assistant is built from what the
+  service declares, so a new option on the service appears here by itself.
+  `ios2ha_camera.delete_timelapse` deletes one by `name`. With more than one
+  camera, choose it with `device_id`.
+- **`sensor.ios2ha_camera_timelapse`** says what the last request came to, with
+  the reason in its attributes; `sensor.ios2ha_camera_timelapses` counts them, with
+  the catalogue in its `items` attribute (kept out of the recorder).
+- **The Media panel** lists them under *iPhone Camera -> Timelapses*. They play
+  through Home Assistant, which signs the link, so they play away from home and
+  the service stays on your network.
+
+```yaml
+action: ios2ha_camera.build_timelapse
+data:
+  start: "2026-09-28 18:00:00"
+  end: "2026-09-29 07:00:00"
+  name: storm
+  fps: 24
+```
+
+## The card
+
+The integration serves a card and adds it to your dashboards' resources itself:
+
+```yaml
+type: custom:ios2ha-camera-card
+device_id: <pick the camera in the editor>
+default_view: still          # still, stacked, live, screenshot or timelapses
+```
+
+It shows each camera on a tab (the streams start as snapshots, with a **Live
+view** button: a live view keeps the phone streaming), a **timelapses** tab that
+plays, builds and deletes them, the colour region drawn on the still, and every
+other entity as Home Assistant's own row, grouped as on the device page. It goes
+only through Home Assistant, so it works wherever your dashboard does.
+
+## The Bubble Card module
+
+For [Bubble Card](https://github.com/Clooos/Bubble-Card) 3.x, `bubble/ios2ha_camera.yaml`
+is a module that turns a Bubble button into the camera: the latest still fills
+the card and refreshes with each new one, the name and state stay readable over
+it, and a bar along the bottom shows a timelapse being built.
+
+To install it, with Bubble Card Tools, copy the file to
+`/config/bubble_card/modules/ios2ha_camera.yaml` (or paste it into Bubble Card's
+module editor), then enable it on a button card. `bubble/example-card.yaml` is a
+complete card with sub-buttons for capture, focus, level horizon and the 24-hour
+timelapse:
+
+```yaml
+type: custom:bubble-card
+card_type: button
+entity: camera.ios2ha_camera_still
+card_layout: large-2-rows
+modules:
+  - ios2ha_camera
+```
+
 ## Moving from MQTT
 
 Home Assistant will not give an entity id to a second entity while the first
