@@ -27,6 +27,7 @@ _LOGGER = logging.getLogger(__name__)
 # A stream is meant to run until the viewer leaves, so nothing here may time it out.
 _STREAM_TIMEOUT = aiohttp.ClientTimeout(total=None, sock_connect=REQUEST_TIMEOUT, sock_read=None)
 _ICONS = {"stream": "mdi:video", "snapshot": "mdi:camera"}
+_CAMERA_KINDS = ("stream", "snapshot")
 # Which snapshot stands in as a stream's thumbnail. There is more than one
 # snapshot now -- the camera still and the phone's screen -- and only the still
 # shows what the stream shows, so picking the first in the list would put the
@@ -126,7 +127,10 @@ async def async_setup_entry(hass, entry, async_add_entities) -> None:
     coordinator = entry.runtime_data
     described = {d["object_id"]: d for d in coordinator.descriptors("camera")}
     still = _thumbnail_source(coordinator.media)
+    # Only what a camera can show: a stream or a snapshot. Video media (the
+    # timelapses) are files listed in a catalogue, served by the media source.
     async_add_entities(
         Ios2haCamera(coordinator, described.get(m["id"]) or _descriptor_for(m), m, still)
         for m in coordinator.media
+        if m.get("kind") in _CAMERA_KINDS
     )
