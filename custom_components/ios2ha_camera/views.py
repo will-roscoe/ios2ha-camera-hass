@@ -64,9 +64,14 @@ class Ios2haMediaView(HomeAssistantView):
                     status=up.status,
                     headers={k: up.headers[k] for k in _PASSED_BACK if k in up.headers})
                 await response.prepare(request)
-                async for chunk in up.content.iter_chunked(_CHUNK):
-                    await response.write(chunk)
-                await response.write_eof()
+                try:
+                    async for chunk in up.content.iter_chunked(_CHUNK):
+                        await response.write(chunk)
+                    await response.write_eof()
+                except ConnectionResetError:
+                    # The viewer went: a video element drops a request on every
+                    # seek. Nothing is wrong, and nothing is left to send.
+                    _LOGGER.debug("viewer of %s went mid-stream", name)
                 return response
         except ClientError as err:
             raise web.HTTPBadGateway(text=f"the camera's service did not answer: {err}") from err

@@ -87,3 +87,27 @@ async def test_an_item_whose_url_leaves_the_service_is_refused(hass, setup, hass
     resp = await client.get(f"/api/ios2ha_camera/{entry.entry_id}/media/timelapse/last_24h.mp4")
     assert resp.status == 404
     assert aioclient_mock.call_count == 0
+
+
+async def test_a_viewer_leaving_mid_stream_is_not_an_error(hass, setup, hass_client,
+                                                           aioclient_mock, caplog):
+    """A video element drops requests all the time -- each seek -- so a write to a
+    viewer who has gone must end the response quietly."""
+    from unittest.mock import patch
+
+    from aiohttp import web
+    entry = await _ready(hass, setup)
+    aioclient_mock.get(SERVICE_URL, status=200, content=b"x" * 200_000,
+                       headers={"Content-Type": "video/mp4"})
+    written = 0
+
+    async def write(self, data):
+        nonlocal written
+        written += 1
+        if written > 1:
+            raise ConnectionResetError("Cannot write to closing transport")
+    client = await hass_client()
+    with patch.object(web.StreamResponse, "write", write):
+        await client.get(f"/api/ios2ha_camera/{entry.entry_id}/media/timelapse/last_24h.mp4")
+    assert "Error handling request" not in caplog.text
+    assert "Traceback" not in caplog.text

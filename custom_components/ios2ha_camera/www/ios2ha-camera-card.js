@@ -98,7 +98,7 @@ class Ios2haCameraCard extends HTMLElement {
 
   setConfig(config) {
     this._config = { default_view: "still", ...config };
-    this._built = false;
+    this._ready = null;           // rebuilt for the new config
     this._view = null;
     if (this._hass) this._render();
   }
@@ -133,14 +133,19 @@ class Ios2haCameraCard extends HTMLElement {
 
   // -- building and updating --
 
+  // Home Assistant sets `hass` many times a second; every one of them waits for
+  // the same build, so none can update a card whose parts do not exist yet.
   async _render() {
     if (!this._hass || !this._config) return;
-    if (!this._built) {
-      this._built = true;
-      this._helpers = await window.loadCardHelpers();
-      this._build();
+    if (!this._ready) {
+      this._ready = (async () => {
+        this._helpers = await window.loadCardHelpers();
+        this._build();
+      })();
     }
-    this._update();
+    const ready = this._ready;
+    await ready;
+    if (ready === this._ready) this._update();   // not a build a new config replaced
   }
 
   _build() {
