@@ -36,17 +36,24 @@ def media_url(entry_id: str, media_id: str, name: str) -> str:
 
 def listed(coordinator, media_id: str) -> tuple[dict | None, dict]:
     """A video media descriptor with a catalogue, and the items it lists now."""
-    media = next((m for m in coordinator.media
-                  if m.get("id") == media_id and m.get("kind") == "video" and m.get("catalogue")),
-                 None)
+    media = next(
+        (
+            m
+            for m in coordinator.media
+            if m.get("id") == media_id and m.get("kind") == "video" and m.get("catalogue")
+        ),
+        None,
+    )
     catalogue = coordinator.data.get(media["catalogue"]) if media else None
     items = catalogue.get("items") if isinstance(catalogue, dict) else None
     return media, items if isinstance(items, dict) else {}
 
 
 def _title(name: str, item: dict) -> str:
-    parts = [f"{item['frames']} frames" if "frames" in item else None,
-             f"{item['duration_s']} s" if "duration_s" in item else None]
+    parts = [
+        f"{item['frames']} frames" if "frames" in item else None,
+        f"{item['duration_s']} s" if "duration_s" in item else None,
+    ]
     detail = ", ".join(p for p in parts if p)
     return f"{name} ({detail})" if detail else name
 
@@ -59,8 +66,11 @@ class Ios2haMediaSource(MediaSource):
         self.hass = hass
 
     def _entries(self):
-        return [e for e in self.hass.config_entries.async_entries(DOMAIN)
-                if e.state is ConfigEntryState.LOADED]
+        return [
+            e
+            for e in self.hass.config_entries.async_entries(DOMAIN)
+            if e.state is ConfigEntryState.LOADED
+        ]
 
     def _entry(self, entry_id: str):
         entry = self.hass.config_entries.async_get_entry(entry_id)
@@ -82,28 +92,55 @@ class Ios2haMediaSource(MediaSource):
     async def async_browse_media(self, item: MediaSourceItem) -> BrowseMediaSource:
         parts = [p for p in (item.identifier or "").split("/") if p]
         if not parts:
-            return self._folder(None, self.name, [
-                self._folder(e.entry_id, e.title, [], leaf=False) for e in self._entries()])
+            return self._folder(
+                None,
+                self.name,
+                [self._folder(e.entry_id, e.title, [], leaf=False) for e in self._entries()],
+            )
         entry = self._entry(parts[0])
         coordinator = entry.runtime_data
         if len(parts) == 1:
-            return self._folder(entry.entry_id, entry.title, [
-                self._folder(f"{entry.entry_id}/{m['id']}", f"{m['id'].capitalize()}s", [],
-                             leaf=False)
-                for m in coordinator.media if m.get("kind") == "video" and m.get("catalogue")])
+            return self._folder(
+                entry.entry_id,
+                entry.title,
+                [
+                    self._folder(
+                        f"{entry.entry_id}/{m['id']}", f"{m['id'].capitalize()}s", [], leaf=False
+                    )
+                    for m in coordinator.media
+                    if m.get("kind") == "video" and m.get("catalogue")
+                ],
+            )
         media, items = listed(coordinator, parts[1])
         if media is None:
             raise Unresolvable(f"no media {parts[1]}")
         newest = sorted(items.items(), key=lambda kv: str(kv[1].get("built", "")), reverse=True)
-        return self._folder(f"{entry.entry_id}/{parts[1]}", f"{parts[1].capitalize()}s", [
-            BrowseMediaSource(domain=DOMAIN, identifier=f"{entry.entry_id}/{parts[1]}/{name}",
-                              media_class=MediaClass.VIDEO, media_content_type="video/mp4",
-                              title=_title(name, it), can_play=True, can_expand=False)
-            for name, it in newest])
+        return self._folder(
+            f"{entry.entry_id}/{parts[1]}",
+            f"{parts[1].capitalize()}s",
+            [
+                BrowseMediaSource(
+                    domain=DOMAIN,
+                    identifier=f"{entry.entry_id}/{parts[1]}/{name}",
+                    media_class=MediaClass.VIDEO,
+                    media_content_type="video/mp4",
+                    title=_title(name, it),
+                    can_play=True,
+                    can_expand=False,
+                )
+                for name, it in newest
+            ],
+        )
 
     def _folder(self, identifier, title, children, leaf=True) -> BrowseMediaSource:
         return BrowseMediaSource(
-            domain=DOMAIN, identifier=identifier, media_class=MediaClass.DIRECTORY,
-            media_content_type="", title=title, can_play=False, can_expand=True,
+            domain=DOMAIN,
+            identifier=identifier,
+            media_class=MediaClass.DIRECTORY,
+            media_content_type="",
+            title=title,
+            can_play=False,
+            can_expand=True,
             children=children if leaf else None,
-            children_media_class=MediaClass.VIDEO if leaf else MediaClass.DIRECTORY)
+            children_media_class=MediaClass.VIDEO if leaf else MediaClass.DIRECTORY,
+        )

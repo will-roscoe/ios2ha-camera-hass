@@ -34,8 +34,9 @@ async def async_register_card(hass: HomeAssistant, version: str) -> None:
     path = str(Path(__file__).parent / "www" / CARD_FILENAME)
     try:
         await hass.http.async_register_static_paths(
-            [StaticPathConfig(CARD_URL, path, cache_headers=False)])
-    except (RuntimeError, ValueError) as err:   # already there, after a reload
+            [StaticPathConfig(CARD_URL, path, cache_headers=False)]
+        )
+    except (RuntimeError, ValueError) as err:  # already there, after a reload
         _LOGGER.debug("card path not (re)registered: %s", err)
     await _async_register_resource(hass, f"{CARD_URL}?v={version}")
 
@@ -49,13 +50,16 @@ async def _async_register_resource(hass: HomeAssistant, url: str) -> None:
         from homeassistant.components.lovelace.resources import ResourceStorageCollection
     except ImportError:
         ResourceStorageCollection = None  # noqa: N806
-    if (resources is None or ResourceStorageCollection is None
-            or not isinstance(resources, ResourceStorageCollection)):
+    if (
+        resources is None
+        or ResourceStorageCollection is None
+        or not isinstance(resources, ResourceStorageCollection)
+    ):
         from homeassistant.components.frontend import add_extra_js_url
 
         try:
             add_extra_js_url(hass, url)
-        except KeyError:        # the frontend is not loaded (a test, or a headless setup)
+        except KeyError:  # the frontend is not loaded (a test, or a headless setup)
             _LOGGER.debug("no frontend to add the card to")
         return
     await resources.async_get_info()

@@ -40,8 +40,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: Ios2haConfigEntry) -> bo
 async def async_unload_entry(hass: HomeAssistant, entry: Ios2haConfigEntry) -> bool:
     await entry.runtime_data.async_stop()
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    others = [e for e in hass.config_entries.async_entries(DOMAIN)
-              if e.entry_id != entry.entry_id and e.state is ConfigEntryState.LOADED]
+    others = [
+        e
+        for e in hass.config_entries.async_entries(DOMAIN)
+        if e.entry_id != entry.entry_id and e.state is ConfigEntryState.LOADED
+    ]
     if unloaded and not others:
         async_unregister_actions(hass)
     return unloaded

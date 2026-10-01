@@ -56,17 +56,26 @@ def _schema(action: dict) -> vol.Schema:
 def _description(action: dict) -> dict:
     """The form Home Assistant shows for the action, from the same fields."""
     fields = {
-        k: {"name": k, "description": f.get("description", ""), "required": False,
-            "selector": _selector(f), **({"example": f["default"]} if "default" in f else {})}
+        k: {
+            "name": k,
+            "description": f.get("description", ""),
+            "required": False,
+            "selector": _selector(f),
+            **({"example": f["default"]} if "default" in f else {}),
+        }
         for k, f in action.get("fields", {}).items()
     }
     fields[ATTR_DEVICE_ID] = {
-        "name": "Camera", "required": False,
+        "name": "Camera",
+        "required": False,
         "description": "Which camera, when more than one is set up.",
         "selector": {"device": {"integration": DOMAIN}},
     }
-    return {"name": action["name"].replace("_", " ").capitalize(),
-            "description": action.get("description", ""), "fields": fields}
+    return {
+        "name": action["name"].replace("_", " ").capitalize(),
+        "description": action.get("description", ""),
+        "fields": fields,
+    }
 
 
 def _zoned(text: Any) -> str:
@@ -90,8 +99,9 @@ def _value(action: dict, data: dict) -> dict:
 
 def target(hass: HomeAssistant, device_id: str | None):
     """The coordinator of the camera a call is for."""
-    loaded = [e for e in hass.config_entries.async_entries(DOMAIN)
-              if e.state is ConfigEntryState.LOADED]
+    loaded = [
+        e for e in hass.config_entries.async_entries(DOMAIN) if e.state is ConfigEntryState.LOADED
+    ]
     if device_id:
         device = dr.async_get(hass).async_get(device_id)
         for entry in loaded:
@@ -101,8 +111,10 @@ def target(hass: HomeAssistant, device_id: str | None):
     if len(loaded) == 1:
         return loaded[0].runtime_data
     raise ServiceValidationError(
-        "no camera is set up" if not loaded
-        else "more than one camera is set up: choose one with device_id")
+        "no camera is set up"
+        if not loaded
+        else "more than one camera is set up: choose one with device_id"
+    )
 
 
 def _handler(hass: HomeAssistant, name: str):
@@ -118,6 +130,7 @@ def _handler(hass: HomeAssistant, name: str):
         except CannotConnect as err:
             raise HomeAssistantError(f"{name}: the service is unreachable ({err})") from err
         return body if call.return_response else None
+
     return handle
 
 
@@ -129,8 +142,13 @@ def async_register_actions(hass: HomeAssistant, coordinator) -> None:
         name = action.get("name")
         if not name or name in registered:
             continue
-        hass.services.async_register(DOMAIN, name, _handler(hass, name), schema=_schema(action),
-                                     supports_response=SupportsResponse.OPTIONAL)
+        hass.services.async_register(
+            DOMAIN,
+            name,
+            _handler(hass, name),
+            schema=_schema(action),
+            supports_response=SupportsResponse.OPTIONAL,
+        )
         async_set_service_schema(hass, DOMAIN, name, _description(action))
         registered.add(name)
 

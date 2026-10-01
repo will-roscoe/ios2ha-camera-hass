@@ -2,6 +2,7 @@
 
 Both are read from the descriptors, so nothing here knows what a timelapse is.
 """
+
 from custom_components.ios2ha_camera.coordinator import Ios2haCoordinator
 
 from .conftest import OBJECTS, SNAPSHOT
@@ -42,6 +43,7 @@ async def test_the_reason_for_an_outcome_is_an_attribute(hass, setup):
 async def test_attributes_from_the_service_are_not_recorded(hass, setup):
     """A catalogue can grow past the recorder's 16 KiB, and its history is of no use."""
     from homeassistant.const import MATCH_ALL
+
     await setup([SNAPSHOT])
     entity = hass.data["entity_components"]["sensor"].get_entity("sensor.ios2ha_camera_timelapses")
     assert MATCH_ALL in entity._unrecorded_attributes

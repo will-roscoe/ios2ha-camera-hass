@@ -4,6 +4,7 @@
 service declares in /objects becomes `ios2ha_camera.<name>`, with a form built from
 its fields, and the call goes to the same control route as every other write.
 """
+
 from unittest.mock import AsyncMock, patch
 
 from homeassistant.config_entries import ConfigEntryState
@@ -34,8 +35,12 @@ async def test_a_call_posts_the_fields_given_and_nothing_else(hass, setup):
     post = AsyncMock(return_value={"ok": True, "name": "build_timelapse"})
     with patch(POST, post):
         response = await hass.services.async_call(
-            DOMAIN, "build_timelapse", {"range": "7d", "fps": 24},
-            blocking=True, return_response=True)
+            DOMAIN,
+            "build_timelapse",
+            {"range": "7d", "fps": 24},
+            blocking=True,
+            return_response=True,
+        )
     post.assert_awaited_once_with("build_timelapse", {"range": "7d", "fps": 24})
     assert response["ok"] is True
 
@@ -45,20 +50,26 @@ async def test_a_time_is_sent_with_home_assistants_zone(hass, setup):
     post = AsyncMock(return_value={"ok": True})
     with patch(POST, post):
         await hass.services.async_call(
-            DOMAIN, "build_timelapse", {"start": "2026-09-28 18:00:00", "name": "storm"},
-            blocking=True)
+            DOMAIN,
+            "build_timelapse",
+            {"start": "2026-09-28 18:00:00", "name": "storm"},
+            blocking=True,
+        )
     sent = post.await_args.args[1]
     when = dt_util.parse_datetime(sent["start"])
     assert when.tzinfo is not None
     assert when == dt_util.parse_datetime("2026-09-28 18:00:00").replace(
-        tzinfo=dt_util.get_default_time_zone())
+        tzinfo=dt_util.get_default_time_zone()
+    )
     assert sent["name"] == "storm"
 
 
 async def test_the_services_refusal_is_the_error(hass, setup):
     await setup([SNAPSHOT])
-    with patch(POST, AsyncMock(side_effect=ControlRejected(400, "unknown key 'colour'"))), \
-            pytest.raises(ServiceValidationError, match="unknown key 'colour'"):
+    with (
+        patch(POST, AsyncMock(side_effect=ControlRejected(400, "unknown key 'colour'"))),
+        pytest.raises(ServiceValidationError, match="unknown key 'colour'"),
+    ):
         await hass.services.async_call(DOMAIN, "build_timelapse", {"range": "7d"}, blocking=True)
 
 
@@ -80,8 +91,12 @@ async def test_a_device_chooses_the_camera(hass, setup):
 
 async def test_with_two_cameras_a_device_is_needed(hass, setup):
     await setup([SNAPSHOT])
-    other = MockConfigEntry(domain=DOMAIN, data={"url": "http://other:8099"}, unique_id="other",
-                            state=ConfigEntryState.LOADED)
+    other = MockConfigEntry(
+        domain=DOMAIN,
+        data={"url": "http://other:8099"},
+        unique_id="other",
+        state=ConfigEntryState.LOADED,
+    )
     other.add_to_hass(hass)
     with pytest.raises(ServiceValidationError, match="device"):
         target(hass, None)
@@ -90,13 +105,19 @@ async def test_with_two_cameras_a_device_is_needed(hass, setup):
 async def test_a_service_without_actions_registers_none(hass):
     """A service older than 2.16.0 declares none; the integration loads as before."""
     without = {k: v for k, v in OBJECTS.items() if k != "actions"}
-    entry = MockConfigEntry(domain=DOMAIN, data={"url": "http://camera-host.lan:8099"},
-                            unique_id="ios2ha_camera", title="iPhone Camera")
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"url": "http://camera-host.lan:8099"},
+        unique_id="ios2ha_camera",
+        title="iPhone Camera",
+    )
     entry.add_to_hass(hass)
     base = "custom_components.ios2ha_camera.api.Ios2haClient"
-    with (patch(f"{base}.get_info", _get_info),
-          patch(f"{base}.get_objects", AsyncMock(return_value=without)),
-          patch(f"{base}.events", lambda self: _events_then_wait([SNAPSHOT])())):
+    with (
+        patch(f"{base}.get_info", _get_info),
+        patch(f"{base}.get_objects", AsyncMock(return_value=without)),
+        patch(f"{base}.events", lambda self: _events_then_wait([SNAPSHOT])()),
+    ):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.LOADED

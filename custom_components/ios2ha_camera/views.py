@@ -22,9 +22,15 @@ from .media_source import listed
 
 _LOGGER = logging.getLogger(__name__)
 
-_NAME = re.compile(r"\A[a-z0-9_-]{1,48}\Z")   # not $: it also matches before a newline
-_PASSED_BACK = ("Content-Type", "Content-Length", "Content-Range", "Accept-Ranges",
-                "Last-Modified", "ETag")
+_NAME = re.compile(r"\A[a-z0-9_-]{1,48}\Z")  # not $: it also matches before a newline
+_PASSED_BACK = (
+    "Content-Type",
+    "Content-Length",
+    "Content-Range",
+    "Accept-Ranges",
+    "Last-Modified",
+    "ETag",
+)
 _CHUNK = 64 * 1024
 
 
@@ -36,11 +42,16 @@ class Ios2haMediaView(HomeAssistantView):
     def __init__(self, hass: HomeAssistant) -> None:
         self.hass = hass
 
-    async def get(self, request: web.Request, entry_id: str, media_id: str,
-                  name: str) -> web.StreamResponse:
+    async def get(
+        self, request: web.Request, entry_id: str, media_id: str, name: str
+    ) -> web.StreamResponse:
         entry = self.hass.config_entries.async_get_entry(entry_id)
-        if (entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED
-                or not _NAME.match(name)):
+        if (
+            entry is None
+            or entry.domain != DOMAIN
+            or entry.state is not ConfigEntryState.LOADED
+            or not _NAME.match(name)
+        ):
             raise web.HTTPNotFound
         coordinator = entry.runtime_data
         _, items = listed(coordinator, media_id)
@@ -62,7 +73,8 @@ class Ios2haMediaView(HomeAssistantView):
                     raise web.HTTPNotFound if up.status == 404 else web.HTTPBadGateway
                 response = web.StreamResponse(
                     status=up.status,
-                    headers={k: up.headers[k] for k in _PASSED_BACK if k in up.headers})
+                    headers={k: up.headers[k] for k in _PASSED_BACK if k in up.headers},
+                )
                 await response.prepare(request)
                 try:
                     async for chunk in up.content.iter_chunked(_CHUNK):

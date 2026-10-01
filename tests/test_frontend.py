@@ -1,4 +1,5 @@
 """The card ships with the integration: served by it, and registered as a resource."""
+
 from .conftest import SNAPSHOT
 
 
