@@ -6,6 +6,8 @@ one to a path on this integration's view, which Home Assistant signs, so a brows
 away from home plays it without ever reaching the service directly.
 """
 
+import asyncio
+
 from homeassistant.components import media_source
 from homeassistant.setup import async_setup_component
 
@@ -98,8 +100,11 @@ async def test_an_item_whose_url_leaves_the_service_is_refused(
     """The catalogue is network input: a url naming another host must not become a
     request from Home Assistant's network position."""
     entry = await _ready(hass, setup)
-    items = entry.runtime_data.data["timelapse_catalogue"]["items"]
-    items["last_24h"] = {**items["last_24h"], "url": "//evil.example/x.mp4"}
+    import copy
+
+    data = copy.deepcopy(entry.runtime_data.data)  # never the shared fixture
+    data["timelapse_catalogue"]["items"]["last_24h"]["url"] = "//evil.example/x.mp4"
+    entry.runtime_data.data = data
     client = await hass_client()
     resp = await client.get(f"/api/ios2ha_camera/{entry.entry_id}/media/timelapse/last_24h.mp4")
     assert resp.status == 404
@@ -132,3 +137,91 @@ async def test_a_viewer_leaving_mid_stream_is_not_an_error(
         await client.get(f"/api/ios2ha_camera/{entry.entry_id}/media/timelapse/last_24h.mp4")
     assert "Error handling request" not in caplog.text
     assert "Traceback" not in caplog.text
+
+
+class _Content:
+    def __init__(self, chunks, fail_at=None):
+        self.chunks, self.fail_at = chunks, fail_at
+
+    async def iter_chunked(self, n):
+        from aiohttp import ClientPayloadError
+
+        for i, chunk in enumerate(self.chunks):
+            if i == self.fail_at:
+                raise ClientPayloadError("the service went mid-file")
+            yield chunk
+
+
+class _Upstream:
+    def __init__(self, status=200, headers=None, content=None):
+        self.status, self.headers = status, headers or {"Content-Type": "video/mp4"}
+        self.content = content or _Content([b"0123456789"])
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+class _Session:
+    def __init__(self, upstream=None, raises=None):
+        self.upstream, self.raises, self.calls = upstream, raises, []
+
+    def get(self, url, **kw):
+        self.calls.append((url, kw))
+        if self.raises:
+            raise self.raises
+        return self.upstream
+
+
+async def _get_through(hass, setup, hass_client, session, **kw):
+    from unittest.mock import patch
+
+    entry = await _ready(hass, setup)
+    client = await hass_client()
+    with patch("custom_components.ios2ha_camera.views.async_get_clientsession", lambda h: session):
+        resp = await client.get(
+            f"/api/ios2ha_camera/{entry.entry_id}/media/timelapse/last_24h.mp4", **kw
+        )
+        try:
+            body = await asyncio.wait_for(resp.read(), 5)
+        except Exception as err:  # a cut connection, which is the point
+            body = err
+    return resp, body
+
+
+async def test_a_redirect_is_not_followed(hass, setup, hass_client):
+    """The origin check would mean nothing if the service could send Home
+    Assistant on to another host."""
+    session = _Session(_Upstream(status=302, headers={"Location": "http://evil.example/x"}))
+    resp, _ = await _get_through(hass, setup, hass_client, session)
+    assert resp.status == 502
+    assert session.calls[0][1]["allow_redirects"] is False
+
+
+async def test_a_long_video_is_not_cut_at_five_minutes(hass, setup, hass_client):
+    session = _Session(_Upstream())
+    await _get_through(hass, setup, hass_client, session)
+    timeout = session.calls[0][1]["timeout"]
+    assert timeout.total is None and timeout.sock_read and timeout.sock_connect
+
+
+async def test_the_service_going_mid_file_ends_the_response(hass, setup, hass_client, caplog):
+    """Headers are already out: the viewer must see the connection end, not wait
+    for a Content-Length that will never arrive."""
+    session = _Session(
+        _Upstream(
+            headers={"Content-Type": "video/mp4", "Content-Length": "1000"},
+            content=_Content([b"x" * 100, b"y" * 100], fail_at=1),
+        )
+    )
+    resp, body = await _get_through(hass, setup, hass_client, session)
+    assert resp.status == 200 and isinstance(body, Exception)
+    assert not isinstance(body, TimeoutError), "the viewer was left waiting"
+    assert "Error handling request" not in caplog.text
+
+
+async def test_a_service_that_does_not_answer_is_a_bad_gateway(hass, setup, hass_client):
+    resp, _ = await _get_through(hass, setup, hass_client, _Session(raises=TimeoutError()))
+    assert resp.status == 502

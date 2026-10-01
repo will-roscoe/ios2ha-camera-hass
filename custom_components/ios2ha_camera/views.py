@@ -10,14 +10,14 @@ from __future__ import annotations
 import logging
 import re
 
-from aiohttp import ClientError, web
+from aiohttp import ClientError, ClientTimeout, web
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import NotIos2ha
-from .const import DOMAIN
+from .const import DOMAIN, REQUEST_TIMEOUT
 from .media_source import listed
 
 _LOGGER = logging.getLogger(__name__)
@@ -32,6 +32,10 @@ _PASSED_BACK = (
     "ETag",
 )
 _CHUNK = 64 * 1024
+# No total: a month's timelapse runs nearly five minutes and a viewer may pause it,
+# and Home Assistant's shared session would otherwise cut every response at five
+# minutes. A read stalled this long is a dead link; a paused one is not reading.
+_UPSTREAM_TIMEOUT = ClientTimeout(total=None, sock_connect=REQUEST_TIMEOUT, sock_read=60)
 
 
 class Ios2haMediaView(HomeAssistantView):
@@ -68,8 +72,12 @@ class Ios2haMediaView(HomeAssistantView):
         headers = {"Range": request.headers["Range"]} if "Range" in request.headers else {}
         session = async_get_clientsession(self.hass)
         try:
-            async with session.get(upstream, headers=headers) as up:
-                if up.status >= 400:
+            # Redirects are not followed: the origin check above would mean nothing
+            # if the service could send Home Assistant on to another host.
+            async with session.get(
+                upstream, headers=headers, allow_redirects=False, timeout=_UPSTREAM_TIMEOUT
+            ) as up:
+                if up.status >= 300:
                     raise web.HTTPNotFound if up.status == 404 else web.HTTPBadGateway
                 response = web.StreamResponse(
                     status=up.status,
@@ -84,6 +92,12 @@ class Ios2haMediaView(HomeAssistantView):
                     # The viewer went: a video element drops a request on every
                     # seek. Nothing is wrong, and nothing is left to send.
                     _LOGGER.debug("viewer of %s went mid-stream", name)
+                except (ClientError, TimeoutError) as err:
+                    # The service went mid-file, after the headers were sent: end
+                    # the connection so the player sees a cut rather than waiting
+                    # for a length that will never arrive.
+                    _LOGGER.warning("%s cut short by the camera's service: %s", name, err)
+                    response.force_close()
                 return response
-        except ClientError as err:
+        except (ClientError, TimeoutError) as err:
             raise web.HTTPBadGateway(text=f"the camera's service did not answer: {err}") from err
