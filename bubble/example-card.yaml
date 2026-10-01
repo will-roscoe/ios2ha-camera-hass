@@ -1,0 +1,46 @@
+# A Bubble button for the ios2ha camera, with the ios2ha_camera module.
+# Tap: the camera's dialog. Sub-buttons: capture a still now, focus, level the
+# horizon, and build the last 24 hours as a timelapse.
+type: custom:bubble-card
+card_type: button
+button_type: name
+entity: camera.ios2ha_camera_still
+name: iPhone Camera
+icon: mdi:cctv
+card_layout: large-2-rows
+show_state: true
+modules:
+  - ios2ha_camera
+ios2ha_camera:
+  camera: camera.ios2ha_camera_still
+tap_action:
+  action: more-info
+sub_button:
+  - name: Capture
+    icon: mdi:camera-iris
+    tap_action:
+      action: perform-action
+      perform_action: button.press
+      target:
+        entity_id: button.ios2ha_camera_capture_now
+  - name: Focus
+    icon: mdi:image-filter-center-focus
+    tap_action:
+      action: perform-action
+      perform_action: button.press
+      target:
+        entity_id: button.ios2ha_camera_focus_now
+  - name: Level
+    icon: mdi:image-filter-hdr
+    tap_action:
+      action: perform-action
+      perform_action: button.press
+      target:
+        entity_id: button.ios2ha_camera_level_horizon
+  - name: Timelapse
+    icon: mdi:movie-open-plus
+    tap_action:
+      action: perform-action
+      perform_action: button.press
+      target:
+        entity_id: button.ios2ha_camera_build_timelapse_24h
