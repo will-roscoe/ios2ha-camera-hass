@@ -7,6 +7,7 @@ stays on the LAN. Range is passed through, so players can seek.
 
 from __future__ import annotations
 
+import logging
 import re
 
 from aiohttp import ClientError, web
@@ -15,10 +16,13 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from .api import NotIos2ha
 from .const import DOMAIN
 from .media_source import listed
 
-_NAME = re.compile(r"^[a-z0-9_-]{1,48}$")
+_LOGGER = logging.getLogger(__name__)
+
+_NAME = re.compile(r"\A[a-z0-9_-]{1,48}\Z")   # not $: it also matches before a newline
 _PASSED_BACK = ("Content-Type", "Content-Length", "Content-Range", "Accept-Ranges",
                 "Last-Modified", "ETag")
 _CHUNK = 64 * 1024
@@ -43,10 +47,17 @@ class Ios2haMediaView(HomeAssistantView):
         item = items.get(name)
         if not isinstance(item, dict) or not item.get("url"):
             raise web.HTTPNotFound
+        try:
+            # The catalogue is network input: a url that leaves the service is
+            # refused before any request is made (api.Ios2haClient.url).
+            upstream = coordinator.client.url(item["url"])
+        except NotIos2ha as err:
+            _LOGGER.warning("refused %s: %s", name, err)
+            raise web.HTTPNotFound from err
         headers = {"Range": request.headers["Range"]} if "Range" in request.headers else {}
         session = async_get_clientsession(self.hass)
         try:
-            async with session.get(coordinator.client.url(item["url"]), headers=headers) as up:
+            async with session.get(upstream, headers=headers) as up:
                 if up.status >= 400:
                     raise web.HTTPNotFound if up.status == 404 else web.HTTPBadGateway
                 response = web.StreamResponse(

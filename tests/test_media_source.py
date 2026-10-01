@@ -74,3 +74,16 @@ async def test_the_view_needs_home_assistants_auth(hass, setup, hass_client_no_a
     client = await hass_client_no_auth()
     resp = await client.get(f"/api/ios2ha_camera/{entry.entry_id}/media/timelapse/last_24h.mp4")
     assert resp.status == 401
+
+
+async def test_an_item_whose_url_leaves_the_service_is_refused(hass, setup, hass_client,
+                                                               aioclient_mock):
+    """The catalogue is network input: a url naming another host must not become a
+    request from Home Assistant's network position."""
+    entry = await _ready(hass, setup)
+    items = entry.runtime_data.data["timelapse_catalogue"]["items"]
+    items["last_24h"] = {**items["last_24h"], "url": "//evil.example/x.mp4"}
+    client = await hass_client()
+    resp = await client.get(f"/api/ios2ha_camera/{entry.entry_id}/media/timelapse/last_24h.mp4")
+    assert resp.status == 404
+    assert aioclient_mock.call_count == 0
