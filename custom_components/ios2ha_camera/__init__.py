@@ -10,6 +10,7 @@ from .api import Ios2haClient
 from .const import CONF_URL, DOMAIN, PLATFORMS
 from .coordinator import Ios2haCoordinator
 from .services import async_register_actions, async_unregister_actions
+from .views import Ios2haMediaView
 
 type Ios2haConfigEntry = ConfigEntry[Ios2haCoordinator]
 
@@ -22,6 +23,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: Ios2haConfigEntry) -> bo
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     # The service's actions, as Home Assistant actions (services.py).
     async_register_actions(hass, coordinator)
+    # Once per Home Assistant run: the view serves every camera's video media.
+    if not hass.data.get(f"{DOMAIN}_view"):
+        hass.http.register_view(Ios2haMediaView(hass))
+        hass.data[f"{DOMAIN}_view"] = True
     # Started after the platforms exist, so the first snapshot lands on entities
     # that are already there to receive it.
     coordinator.start()
