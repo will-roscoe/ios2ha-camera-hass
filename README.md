@@ -117,6 +117,11 @@ plays, builds and deletes them, the colour region drawn on the still, and every
 other entity as Home Assistant's own row, grouped as on the device page. It goes
 only through Home Assistant, so it works wherever your dashboard does.
 
+There is nothing to add by hand: no resource and no HACS frontend download (a
+second copy beside the integration's is harmless, but redundant). After an update,
+the browser console says which version the page loaded (`IOS2HA-CAMERA-CARD
+0.5.1`); an older one there means a cached page, which a reload clears.
+
 ## The Bubble Card module
 
 For [Bubble Card](https://github.com/Clooos/Bubble-Card) 3.x, `bubble/ios2ha_camera.yaml`

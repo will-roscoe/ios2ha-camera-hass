@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -14,10 +16,19 @@ from .frontend import async_register_card
 from .services import async_register_actions, async_unregister_actions
 from .views import Ios2haMediaView
 
+_LOGGER = logging.getLogger(__name__)
+
 type Ios2haConfigEntry = ConfigEntry[Ios2haCoordinator]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: Ios2haConfigEntry) -> bool:
+    # The card first, served by the integration and registered as a resource: a
+    # dashboard that holds it must find it even while setup waits for the
+    # service, and a card that cannot register must not take the camera down.
+    try:
+        await async_register_card(hass, str((await async_get_integration(hass, DOMAIN)).version))
+    except Exception:
+        _LOGGER.exception("the card could not be registered")
     client = Ios2haClient(async_get_clientsession(hass), entry.data[CONF_URL])
     coordinator = Ios2haCoordinator(hass, entry, client)
     await coordinator.async_prepare()
@@ -29,8 +40,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: Ios2haConfigEntry) -> bo
     if not hass.data.get(f"{DOMAIN}_view"):
         hass.http.register_view(Ios2haMediaView(hass))
         hass.data[f"{DOMAIN}_view"] = True
-    # The card, served by the integration itself and registered as a resource.
-    await async_register_card(hass, str((await async_get_integration(hass, DOMAIN)).version))
     # Started after the platforms exist, so the first snapshot lands on entities
     # that are already there to receive it.
     coordinator.start()

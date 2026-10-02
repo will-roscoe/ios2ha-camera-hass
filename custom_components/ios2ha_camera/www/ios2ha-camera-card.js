@@ -504,12 +504,31 @@ class Ios2haCameraCardEditor extends HTMLElement {
   }
 }
 
-customElements.define("ios2ha-camera-card", Ios2haCameraCard);
-customElements.define("ios2ha-camera-card-editor", Ios2haCameraCardEditor);
+// The page can load this twice: during an update, or with a resource added by hand
+// beside the one the integration adds. A second definition would throw, so the
+// first copy stays until the page is reloaded.
+if (!customElements.get("ios2ha-camera-card")) {
+  customElements.define("ios2ha-camera-card", Ios2haCameraCard);
+}
+if (!customElements.get("ios2ha-camera-card-editor")) {
+  customElements.define("ios2ha-camera-card-editor", Ios2haCameraCardEditor);
+}
 window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "ios2ha-camera-card",
-  name: "iPhone Camera",
-  description: "The ios2ha camera: its pictures, timelapses and every control.",
-  preview: true,
-});
+if (!window.customCards.some((c) => c.type === "ios2ha-camera-card")) {
+  window.customCards.push({
+    type: "ios2ha-camera-card",
+    name: "iPhone Camera",
+    description: "The ios2ha camera: its pictures, timelapses and every control.",
+    preview: true,
+    documentationURL: "https://github.com/will-roscoe/ios2ha-camera-hass#the-card",
+  });
+}
+
+// The integration adds this script with its own version in the query, so the
+// console says which release the browser is running, and a stale cache shows.
+const VERSION = new URL(import.meta.url).searchParams.get("v") ?? "unknown";
+console.info(
+  `%c IOS2HA-CAMERA-CARD %c ${VERSION} `,
+  "color: white; background: #03a9f4; font-weight: 700;",
+  "color: #03a9f4; background: white; font-weight: 700;",
+);
