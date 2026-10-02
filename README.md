@@ -124,16 +124,22 @@ the browser console says which version the page loaded (`IOS2HA-CAMERA-CARD
 
 ## The Bubble Card module
 
-For [Bubble Card](https://github.com/Clooos/Bubble-Card) 3.x, `bubble/ios2ha_camera.yaml`
-is a module that turns a Bubble button into the camera: the latest still fills
+For [Bubble Card](https://github.com/Clooos/Bubble-Card) 3.x, the integration
+ships a module that turns a Bubble button into the camera: the latest still fills
 the card and refreshes with each new one, the name and state stay readable over
 it, and a bar along the bottom shows a timelapse being built.
 
-To install it, with Bubble Card Tools, copy the file to
-`/config/bubble_card/modules/ios2ha_camera.yaml` (or paste it into Bubble Card's
-module editor), then enable it on a button card. `bubble/example-card.yaml` is a
-complete card with sub-buttons for capture, focus, level horizon and the 24-hour
-timelapse:
+To install it, turn on **Bubble Card module** in the camera device's
+Configuration section. It needs [Bubble Card Tools](https://github.com/Clooos/Bubble-Card-Tools),
+which is where Bubble Card reads modules from; without it the switch starts
+disabled (enable it there if you add Bubble Card Tools later). The integration writes `/config/bubble_card/modules/ios2ha_camera.yaml`
+and brings it up to date with each release of its own, so edits made in Bubble
+Card's module editor last until the next update. Turning the switch off removes
+the file. (The module is `custom_components/ios2ha_camera/modules/ios2ha_camera.yaml`
+if you would rather copy it yourself.)
+
+Then enable it on a button card. `bubble/example-card.yaml` is a complete card
+with sub-buttons for capture, focus, level horizon and the 24-hour timelapse:
 
 ```yaml
 type: custom:bubble-card
