@@ -1,0 +1,14 @@
+{
+  "description": "Home Assistant integration for the ios2ha-camera service",
+  "links": {
+    "docs": "",
+    "pypi": "",
+    "repo": ""
+  },
+  "name": "ios2ha-camera-hass",
+  "open_issues": 0,
+  "released": "2026-10-02",
+  "source": "project",
+  "updated": "2026-10-02T13:49:32Z",
+  "version": "0.6.0"
+}

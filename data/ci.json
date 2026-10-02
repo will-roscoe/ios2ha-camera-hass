@@ -1,0 +1,36 @@
+{
+  "builds": {
+    "Linux": {
+      "x86_64": "passing"
+    }
+  },
+  "coverage": null,
+  "docstrings": null,
+  "lint": {
+    "gates": [
+      "ruff",
+      "ruff-format"
+    ],
+    "status": "passing"
+  },
+  "python": [
+    {
+      "status": "passing",
+      "version": "3.14"
+    }
+  ],
+  "run": {
+    "commit": "1d0f3184722fc6567eff79e431d99d449599756c",
+    "id": "37015358486",
+    "url": "https://github.com/will-roscoe/ios2ha-camera-hass/actions/runs/37015358486"
+  },
+  "source": "ci",
+  "tests": {
+    "duration_s": 6.49,
+    "failed": 0,
+    "passed": 112,
+    "skipped": 0,
+    "total": 112
+  },
+  "updated": "2026-10-02T13:49:31Z"
+}
