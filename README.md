@@ -115,10 +115,50 @@ plays, builds and deletes them, the colour region drawn on the still, and every
 other entity as Home Assistant's own row, grouped as on the device page. It goes
 only through Home Assistant, so it works wherever your dashboard does.
 
+### Choosing what it shows
+
+Every option is in the card's visual editor: each tab, tool, section and row is a
+checkbox, ticked while it shows. In YAML the same choices are two lists:
+
+- `open`: the sections unfolded when the card loads: `controls`, `configuration`
+  and `diagnostics`. Unset, only Controls opens.
+- `hide`: the parts left out. Anything not listed shows, so an entity a later
+  release adds appears on a card you have already trimmed.
+
+| `hide` key | Leaves out |
+| --- | --- |
+| `header.title`, `header.status` | the camera's name; the stream state and the age of the last still. With both, the header goes |
+| `tab.still`, `tab.stacked`, `tab.live`, `tab.screenshot`, `tab.timelapses` | that tab. With one tab left, the tab bar goes; a hidden `default_view` falls back to the first tab shown |
+| `tool.live_view` | the **Live view** button on the stacked and live tabs |
+| `tool.colour_region` | **Pick colour region** and **Show region** on the still |
+| `tool.colour_reference` | **Set colour reference** and the reference's state |
+| `timelapse.player`, `timelapse.delete`, `timelapse.build` | the timelapse picker and player; **Delete**; the whole build form |
+| `timelapse.field.<name>` | one field of the build form (`timelapse.field.fps`); the action uses its default |
+| `section.controls`, `section.configuration`, `section.diagnostics` | a whole section |
+| `row.<entity>` | one row, named by what the entity is (`row.battery_temperature`), so it survives renaming the entity |
+
+A section whose rows are all hidden is left out too. A card showing only the latest
+still, with nothing under it:
+
+```yaml
+type: custom:ios2ha-camera-card
+device_id: <pick the camera in the editor>
+hide:
+  - tab.stacked
+  - tab.live
+  - tab.screenshot
+  - tab.timelapses
+  - tool.colour_region
+  - tool.colour_reference
+  - section.controls
+  - section.configuration
+  - section.diagnostics
+```
+
 There is nothing to add by hand: no resource and no HACS frontend download (a
 second copy beside the integration's is harmless, but redundant). After an update,
-the browser console says which version the page loaded (`IOS2HA-CAMERA-CARD
-0.5.1`); an older one there means a cached page, which a reload clears.
+the browser console says which version the page loaded (`IOS2HA-CAMERA-CARD`
+followed by the version); an older one there means a cached page, which a reload clears.
 
 ## The Bubble Card module
 
