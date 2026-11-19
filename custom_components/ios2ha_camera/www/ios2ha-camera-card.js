@@ -11,6 +11,11 @@
  *   type: custom:ios2ha-camera-card
  *   device_id: <the camera's device>      # the editor offers a picker
  *   default_view: still                   # optional: a camera or "timelapses"
+ *   open: [controls]                      # optional: sections unfolded on load
+ *   hide: [tab.screenshot, row.battery_temperature]   # optional: parts left out
+ *
+ * Every option is in the card's visual editor; the keys `hide` takes are listed
+ * above hiddenKeys() below.
  */
 
 const DOMAIN = "ios2ha_camera";
@@ -18,7 +23,12 @@ const PREFIX = "ios2ha_camera_";
 const CAMERA_ORDER = ["still", "stacked", "live", "screenshot"];
 const STREAMS = new Set(["live", "stacked"]);   // keep the phone awake while shown
 const REGION = ["colour_region_x0", "colour_region_y0", "colour_region_x1", "colour_region_y1"];
-const SECTIONS = [[null, "Controls"], ["config", "Configuration"], ["diagnostic", "Diagnostics"]];
+// [entity category, section key used by `open` and `hide`, title]
+const SECTIONS = [[null, "controls", "Controls"], ["config", "configuration", "Configuration"],
+                  ["diagnostic", "diagnostics", "Diagnostics"]];
+
+/** The section key (`controls`, `configuration`, `diagnostics`) for each entity category. */
+export const SECTION_KEYS = Object.fromEntries(SECTIONS.map(([category, key]) => [category, key]));
 
 // Which of the service's objects an entity is. The integration sets each entity's
 // translation key to it, which survives a renamed entity id and the `_2` a second
@@ -54,6 +64,212 @@ function relative(iso) {
   if (s < 3600) return `${Math.round(s / 60)} min ago`;
   if (s < 86400) return `${Math.round(s / 3600)} h ago`;
   return `${Math.round(s / 86400)} d ago`;
+}
+
+// -- what the card shows: `hide` and `open` --
+//
+// `hide` lists the parts left out, by key: header.title, header.status, tab.<camera>,
+// tab.timelapses, tool.live_view, tool.colour_region, tool.colour_reference,
+// timelapse.player, timelapse.delete, timelapse.build, timelapse.field.<name>,
+// section.<key> and row.<object id>. Anything not listed shows, so an entity a later
+// release adds appears on a card already trimmed. `open` lists the sections unfolded
+// when the card loads.
+
+function asList(value) {
+  if (value == null) return [];
+  return (Array.isArray(value) ? value : [value]).map(String);
+}
+
+/** Return the keys `config.hide` leaves out, as a set; a single string counts as one key. */
+export function hiddenKeys(config) {
+  return new Set(asList(config?.hide));
+}
+
+/** Return the section keys unfolded when the card loads: `config.open`, or `["controls"]` when unset. */
+export function openSections(config) {
+  return config?.open == null ? ["controls"] : asList(config.open);
+}
+
+/** Return whether the part named by `key` shows on a card with this `config`. */
+export function isShown(config, key) {
+  return !hiddenKeys(config).has(key);
+}
+
+function deviceEntities(hass, deviceId) {
+  return Object.values(hass.entities ?? {})
+    .filter((e) => e.device_id === deviceId && !e.hidden && hass.states?.[e.entity_id]);
+}
+
+function rowLabel(hass, entity, deviceName) {
+  const name = hass.states[entity.entity_id]?.attributes?.friendly_name ?? entity.entity_id;
+  return deviceName && name.startsWith(`${deviceName} `) ? name.slice(deviceName.length + 1) : name;
+}
+
+/**
+ * Return what a camera device offers the card, for the card and its editor alike.
+ *
+ * :param hass: Home Assistant's frontend object (entities, states, devices, services).
+ * :param deviceId: the camera's device id.
+ * :returns: ``{tabs, sections, fields}``: ``tabs`` lists camera object ids in
+ *   CAMERA_ORDER, then ``"timelapses"`` when the device has the timelapses sensor;
+ *   ``sections`` maps ``controls``, ``configuration`` and ``diagnostics`` to the
+ *   ``{key, label}`` of each row (``key`` is ``row.<object id>``, ``label`` the
+ *   entity's name without the device's); ``fields`` lists the ``{name, label}`` of
+ *   each build_timelapse field except ``device_id`` (empty without that action).
+ */
+export function deviceParts(hass, deviceId) {
+  const entities = deviceEntities(hass, deviceId);
+  const device = hass.devices?.[deviceId];
+  const deviceName = device?.name_by_user || device?.name;
+  const tabs = entities.filter((e) => e.entity_id.startsWith("camera.")).map(objectId)
+    .sort((a, b) => CAMERA_ORDER.indexOf(a) - CAMERA_ORDER.indexOf(b));
+  if (entities.some((e) => e.entity_id.startsWith("sensor.") && objectId(e) === "timelapses")) tabs.push("timelapses");
+  const sections = Object.fromEntries(SECTIONS.map(([, key]) => [key, []]));
+  for (const e of entities) {
+    const key = SECTION_KEYS[e.entity_category ?? null];
+    if (e.entity_id.startsWith("camera.") || !key) continue;
+    sections[key].push({ key: `row.${objectId(e)}`, label: rowLabel(hass, e, deviceName) });
+  }
+  const fields = Object.entries(hass.services?.[DOMAIN]?.build_timelapse?.fields ?? {})
+    .filter(([name]) => name !== "device_id")
+    .map(([name, f]) => ({ name, label: f.name ?? name }));
+  return { tabs, sections, fields };
+}
+
+/** Return the views (each with an `id`) whose tab `config` does not hide. */
+export function visibleViews(views, config) {
+  return views.filter((v) => isShown(config, `tab.${v.id}`));
+}
+
+/** Return the view to show first: the visible `default_view`, else the first visible view, else null. */
+export function pickView(views, config) {
+  const shown = visibleViews(views, config);
+  return shown.find((v) => v.id === config?.default_view) ?? shown[0] ?? null;
+}
+
+// -- the editor's form --
+//
+// Every option of the editor's checkbox lists is a hide key, ticked while that part
+// shows, except `open.<section>`, ticked while the section starts open. So the YAML
+// keeps a short `hide` list while the form shows everything there is.
+
+const capital = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const HEADER_OPTIONS = [["header.title", "Name"], ["header.status", "Status line"]];
+const CAMERA_TOOLS = [["tool.live_view", "Live view button"], ["tool.colour_region", "Colour region"],
+                      ["tool.colour_reference", "Colour reference"]];
+const TIMELAPSE_TOOLS = [["timelapse.player", "Timelapse player"], ["timelapse.delete", "Delete timelapse"],
+                         ["timelapse.build", "Build form"]];
+const SECTION_ICONS = { controls: "mdi:tune", configuration: "mdi:cog", diagnostics: "mdi:information-outline" };
+const EDITOR_LABELS = { device_id: "Camera", default_view: "Show first", shown_header: "Header",
+                        shown_tabs: "Tabs", shown_tools: "Tools" };
+
+function formLists(parts) {
+  const timelapses = parts.tabs.includes("timelapses");
+  const lists = {
+    shown_header: HEADER_OPTIONS,
+    shown_tabs: parts.tabs.map((t) => [`tab.${t}`, capital(t)]),
+    shown_tools: [...CAMERA_TOOLS, ...(timelapses ? TIMELAPSE_TOOLS : []),
+                  ...(timelapses ? parts.fields : []).map((f) => [`timelapse.field.${f.name}`, `Build form: ${f.label}`])],
+  };
+  for (const [, key] of SECTIONS) {
+    const rows = parts.sections[key];
+    if (!rows.length) continue;
+    lists[`section_${key}`] = [[`section.${key}`, "Show section"], [`open.${key}`, "Open by default"]];
+    lists[`rows_${key}`] = rows.map((r) => [r.key, r.label]);
+  }
+  return lists;
+}
+
+function checklist(name, options) {
+  return { name, selector: { select: { multiple: true, mode: "list",
+                                       options: options.map(([value, label]) => ({ value, label })) } } };
+}
+
+function editorDevice(hass, config, data = {}) {
+  return data.device_id || config?.device_id || firstDevice(hass);
+}
+
+/**
+ * Return the ha-form schema for the card's edit dialog: Camera, Show first (the
+ * visible tabs), then collapsed groups of checkboxes for the header, tabs, tools and
+ * each section that has rows (Show section, Open by default, then a box per row).
+ */
+export function editorSchema(hass, config = {}) {
+  const parts = deviceParts(hass, editorDevice(hass, config));
+  const lists = formLists(parts);
+  const group = (title, icon, schema) => ({ type: "expandable", name: "", flatten: true, title, icon, schema });
+  const tabs = parts.tabs.filter((t) => isShown(config, `tab.${t}`));
+  return [
+    { name: "device_id", selector: { device: { integration: DOMAIN } } },
+    { name: "default_view",
+      selector: { select: { mode: "dropdown", options: tabs.map((t) => ({ value: t, label: capital(t) })) } } },
+    group("Header", "mdi:page-layout-header", [checklist("shown_header", lists.shown_header)]),
+    group("Tabs", "mdi:tab", [checklist("shown_tabs", lists.shown_tabs)]),
+    group("Tools", "mdi:tools", [checklist("shown_tools", lists.shown_tools)]),
+    ...SECTIONS.filter(([, key]) => lists[`rows_${key}`]).map(([, key, title]) =>
+      group(`${title} (${parts.sections[key].length})`, SECTION_ICONS[key],
+            [checklist(`section_${key}`, lists[`section_${key}`]), checklist(`rows_${key}`, lists[`rows_${key}`])])),
+  ];
+}
+
+/** ha-form `computeLabel`: the label of a field in the card's edit dialog. */
+export function editorLabel(schema) {
+  if (schema.name.startsWith("section_")) return "Section";
+  if (schema.name.startsWith("rows_")) return "Rows";
+  return EDITOR_LABELS[schema.name] ?? schema.name;
+}
+
+/** Return the editor form's data for `config`: each checkbox list holds its ticked options. */
+export function toFormData(hass, config = {}) {
+  const hidden = hiddenKeys(config);
+  const open = new Set(openSections(config));
+  const data = {};
+  if (config.device_id !== undefined) data.device_id = config.device_id;
+  if (config.default_view !== undefined) data.default_view = config.default_view;
+  for (const [name, options] of Object.entries(formLists(deviceParts(hass, editorDevice(hass, config))))) {
+    data[name] = options.map(([v]) => v)
+      .filter((v) => (v.startsWith("open.") ? open.has(v.slice(5)) : !hidden.has(v)));
+  }
+  return data;
+}
+
+/**
+ * Return the card config the editor form's `data` describes, starting from `config`.
+ *
+ * ``hide`` becomes every offered option left unticked, plus keys in ``config.hide``
+ * the form does not offer (an entity missing right now keeps its setting); ``open``
+ * becomes the ticked ``open.*`` options, plus open sections the form does not offer.
+ * ``hide`` is dropped when empty and ``open`` when it is the default ``["controls"]``;
+ * every other key passes through. A list missing from ``data`` leaves its options as
+ * ``config`` had them.
+ */
+export function fromFormData(hass, config = {}, data = {}) {
+  const hiddenBefore = hiddenKeys(config);
+  const openBefore = new Set(openSections(config));
+  const offered = new Set();
+  const hide = [];
+  const open = [];
+  for (const [name, options] of Object.entries(formLists(deviceParts(hass, editorDevice(hass, config, data))))) {
+    const ticked = name in data ? new Set(asList(data[name])) : null;
+    for (const [v] of options) {
+      offered.add(v);
+      if (v.startsWith("open.")) {
+        if (ticked ? ticked.has(v) : openBefore.has(v.slice(5))) open.push(v.slice(5));
+      } else if (ticked ? !ticked.has(v) : hiddenBefore.has(v)) {
+        hide.push(v);
+      }
+    }
+  }
+  hide.push(...[...hiddenBefore].filter((k) => !offered.has(k)));
+  open.push(...[...openBefore].filter((s) => !offered.has(`open.${s}`)));
+  const out = { ...config };
+  if (data.device_id !== undefined) out.device_id = data.device_id;
+  if (data.default_view !== undefined) out.default_view = data.default_view;
+  delete out.hide;
+  delete out.open;
+  if (hide.length) out.hide = hide;
+  if (!(open.length === 1 && open[0] === "controls")) out.open = open;
+  return out;
 }
 
 const STYLE = `
@@ -122,10 +338,10 @@ class Ios2haCameraCard extends HTMLElement {
   _deviceId() { return this._config.device_id || firstDevice(this._hass); }
 
   _entities() {
-    const id = this._deviceId();
-    return Object.values(this._hass.entities ?? {})
-      .filter((e) => e.device_id === id && !e.hidden && this._hass.states[e.entity_id]);
+    return deviceEntities(this._hass, this._deviceId());
   }
+
+  _visible(key) { return isShown(this._config, key); }
 
   _find(domain, oid) {
     return this._entities().find((e) => e.entity_id.startsWith(`${domain}.`) && objectId(e) === oid);
@@ -160,21 +376,25 @@ class Ios2haCameraCard extends HTMLElement {
     const device = this._hass.devices?.[this._deviceId()];
     this._title = el("h2", { text: device?.name_by_user || device?.name || "iPhone Camera" });
     this._sub = el("span", { class: "sub" });
+    const head = this._visible("header.title") || this._visible("header.status")
+      ? el("div", { class: "head" }, this._visible("header.title") ? this._title : null,
+           this._visible("header.status") ? this._sub : null)
+      : null;
     this._tabs = el("div", { class: "tabs" });
     this._stage = el("div", { class: "view" });
     new ResizeObserver(() => this._drawRegion()).observe(this._stage);
     this._below = el("div");
     this._rowsHost = el("div");
-    root.append(el("ha-card", {}, el("div", { class: "head" }, this._title, this._sub),
-                   this._tabs, this._stage, this._below, this._rowsHost));
+    root.append(el("ha-card", {}, head, this._tabs, this._stage, this._below, this._rowsHost));
     this._cameras = this._entities()
       .filter((e) => e.entity_id.startsWith("camera."))
       .sort((a, b) => CAMERA_ORDER.indexOf(objectId(a)) - CAMERA_ORDER.indexOf(objectId(b)));
-    this._views = this._cameras.map((e) => ({ id: objectId(e), entity: e.entity_id,
-                                               label: objectId(e) }));
-    if (this._find("sensor", "timelapses")) this._views.push({ id: "timelapses", label: "timelapses" });
+    const views = this._cameras.map((e) => ({ id: objectId(e), entity: e.entity_id, label: objectId(e) }));
+    if (this._find("sensor", "timelapses")) views.push({ id: "timelapses", label: "timelapses" });
+    this._views = visibleViews(views, this._config);
+    this._tabs.hidden = this._views.length <= 1;    // one tab has nothing to switch to
     this._buildRows();
-    const first = this._views.find((v) => v.id === this._config.default_view) ?? this._views[0];
+    const first = pickView(views, this._config);
     if (first) this._select(first);
   }
 
@@ -224,15 +444,17 @@ class Ios2haCameraCard extends HTMLElement {
     this._shown = { card };
     this._stage.replaceChildren(card);
     const tools = el("div", { class: "tools" });
-    if (stream) {
+    if (stream && this._visible("tool.live_view")) {
       tools.append(el("button", {
         class: this._live ? "on" : "", text: this._live ? "Stop live view" : "Live view",
         title: "Keeps the phone streaming while it is shown",
         onclick: () => { this._live = !this._live; this._showCamera(view); },
       }));
     }
-    if (view.id === "still" && REGION.every((oid) => this._find("number", oid))) this._regionTools(tools);
-    this._below.replaceChildren(tools);
+    const region = this._visible("tool.colour_region") && REGION.every((oid) => this._find("number", oid));
+    const reference = this._visible("tool.colour_reference") && this._find("button", "set_colour_reference");
+    if (view.id === "still" && (region || reference)) this._regionTools(tools, region, reference);
+    this._below.replaceChildren(...(tools.children.length ? [tools] : []));
   }
 
   // -- the colour region, drawn on the still --
@@ -255,7 +477,23 @@ class Ios2haCameraCard extends HTMLElement {
     });
   }
 
-  _regionTools(tools) {
+  // `region`: the region picker and overlay; `reference`: the colour reference
+  // button entity, or false. Either may be left out by the card's `hide`.
+  _regionTools(tools, region, reference) {
+    const error = el("span", { class: "error" });
+    if (region) this._regionPicker(tools, error);
+    if (reference) {
+      const refState = el("span", { class: "muted" });
+      this._refState = refState;
+      tools.append(el("button", { text: "Set colour reference", onclick: () =>
+        this._hass.callService("button", "press", { entity_id: reference.entity_id })
+          .catch((err) => { error.textContent = err.message ?? String(err); }) }), refState);
+    }
+    tools.append(error);
+    this._drawRegion();
+  }
+
+  _regionPicker(tools, error) {
     this._overlay = el("div", { class: "region", hidden: true });
     const glass = el("div", { class: "glass", hidden: true });
     this._stage.append(this._overlay, glass);
@@ -305,18 +543,7 @@ class Ios2haCameraCard extends HTMLElement {
     };
     pick.addEventListener("click", () => setPicking(!this._picking));
     const show = el("input", { type: "checkbox", onchange: (ev) => { this._showRegion = ev.target.checked; this._drawRegion(); } });
-    const error = el("span", { class: "error" });
-    const reference = this._find("button", "set_colour_reference");
-    const refState = el("span", { class: "muted" });
-    this._refState = refState;
     tools.append(pick, el("label", { class: "muted" }, show, " Show region"));
-    if (reference) {
-      tools.append(el("button", { text: "Set colour reference", onclick: () =>
-        this._hass.callService("button", "press", { entity_id: reference.entity_id })
-          .catch((err) => { error.textContent = err.message ?? String(err); }) }), refState);
-    }
-    tools.append(error);
-    this._drawRegion();
   }
 
   // -- timelapses --
@@ -327,9 +554,11 @@ class Ios2haCameraCard extends HTMLElement {
 
   _buildTimelapses() {
     const tl = {};
+    // A hidden player still keeps its picker, unshown: Delete acts on the newest.
+    tl.player = this._visible("timelapse.player");
     tl.video = el("video", { controls: true, playsinline: true, preload: "metadata", hidden: true });
     tl.empty = el("div", { class: "tools muted", text: "No timelapses built yet." });
-    this._stage.replaceChildren(tl.video, tl.empty);
+    this._stage.replaceChildren(...(tl.player ? [tl.video, tl.empty] : []));
     tl.pick = el("select", { onchange: () => this._play(true) });
     tl.status = el("span", { class: "muted" });
     tl.error = el("span", { class: "error" });
@@ -339,16 +568,18 @@ class Ios2haCameraCard extends HTMLElement {
     tl.inputs = {};
     const fields = el("div", { class: "fields" });
     for (const [name, f] of Object.entries(service?.fields ?? {})) {
-      if (name === "device_id") continue;
+      if (name === "device_id" || !this._visible(`timelapse.field.${name}`)) continue;   // a hidden field takes its default
       const input = this._fieldInput(f);
       if (!input) continue;
       tl.inputs[name] = input;
       fields.append(el("label", { title: f.description ?? "" }, f.name ?? name, input));
     }
     tl.form.append(fields, el("div", {}, el("button", { type: "submit", text: "Build timelapse" })));
-    this._below.replaceChildren(el("div", { class: "tools" }, tl.pick, tl.del, tl.status, tl.error),
-                                service ? tl.form : el("div", { class: "tools muted",
-                                  text: "Building needs ios2ha-camera 2.16.0 or later." }));
+    const build = !this._visible("timelapse.build") ? null : service ? tl.form
+      : el("div", { class: "tools muted", text: "Building needs ios2ha-camera 2.16.0 or later." });
+    this._below.replaceChildren(el("div", { class: "tools" }, tl.player ? tl.pick : null,
+                                   this._visible("timelapse.delete") ? tl.del : null, tl.status, tl.error),
+                                ...(build ? [build] : []));
     this._tl = tl;
     this._tlSignature = null;
     this._updateTimelapses(true);
@@ -406,6 +637,7 @@ class Ios2haCameraCard extends HTMLElement {
     const tl = this._tl;
     const name = tl.pick.value;
     const entry = this._catalogue()[name];
+    if (!tl.player) return;   // nothing to play into
     if (!entry) { tl.video.hidden = true; tl.video.removeAttribute("src"); this._playing = null; return; }
     const key = `${name}@${entry.built}`;
     if (!force && this._playing === key) return;
@@ -461,8 +693,10 @@ class Ios2haCameraCard extends HTMLElement {
   _buildRows() {
     this._rows = [];
     const entities = this._entities().filter((e) => !e.entity_id.startsWith("camera."));
-    const sections = SECTIONS.map(([category, title]) => {
-      const list = entities.filter((e) => (e.entity_category ?? null) === category);
+    const open = new Set(openSections(this._config));
+    const sections = SECTIONS.map(([category, key, title]) => {
+      if (!this._visible(`section.${key}`)) return null;
+      const list = entities.filter((e) => (e.entity_category ?? null) === category && this._visible(`row.${objectId(e)}`));
       if (!list.length) return null;
       const rows = el("div", { class: "rows" });
       for (const e of list) {
@@ -472,7 +706,7 @@ class Ios2haCameraCard extends HTMLElement {
         rows.append(row);
       }
       const d = el("details", {}, el("summary", { text: `${title} (${list.length})` }), rows);
-      if (category === null) d.open = true;
+      d.open = open.has(key);
       return d;
     });
     this._rowsHost.replaceChildren(...sections.filter(Boolean));
@@ -488,19 +722,28 @@ class Ios2haCameraCardEditor extends HTMLElement {
     if (!this._hass || !this._config) return;
     if (!this._form) {
       this._form = document.createElement("ha-form");
-      this._form.computeLabel = (s) => ({ device_id: "Camera", default_view: "Show first" })[s.name] ?? s.name;
+      this._form.computeLabel = editorLabel;
       this._form.addEventListener("value-changed", (ev) => {
-        this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: ev.detail.value },
-                                                              bubbles: true, composed: true }));
+        const config = fromFormData(this._hass, this._config, ev.detail.value);
+        this.dispatchEvent(new CustomEvent("config-changed", { detail: { config }, bubbles: true, composed: true }));
       });
       this.append(this._form);
     }
     this._form.hass = this._hass;
-    this._form.data = this._config;
-    this._form.schema = [
-      { name: "device_id", selector: { device: { integration: DOMAIN } } },
-      { name: "default_view", selector: { select: { options: [...CAMERA_ORDER, "timelapses"] } } },
-    ];
+    // hass changes with every state change; a new schema or data object would
+    // redraw the form each time, closing whatever group was open.
+    const schema = editorSchema(this._hass, this._config);
+    const schemaKey = JSON.stringify(schema);
+    if (schemaKey !== this._schemaKey) {
+      this._schemaKey = schemaKey;
+      this._form.schema = schema;
+    }
+    const data = toFormData(this._hass, this._config);
+    const dataKey = JSON.stringify(data);
+    if (dataKey !== this._dataKey) {
+      this._dataKey = dataKey;
+      this._form.data = data;
+    }
   }
 }
 
