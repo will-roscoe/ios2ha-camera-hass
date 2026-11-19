@@ -11,6 +11,11 @@
  *   type: custom:ios2ha-camera-card
  *   device_id: <the camera's device>      # the editor offers a picker
  *   default_view: still                   # optional: a camera or "timelapses"
+ *   open: [controls]                      # optional: sections unfolded on load
+ *   hide: [tab.screenshot, row.battery_temperature]   # optional: parts left out
+ *
+ * Every option is in the card's visual editor; the keys `hide` takes are listed
+ * above hiddenKeys() below.
  */
 
 const DOMAIN = "ios2ha_camera";
@@ -333,10 +338,10 @@ class Ios2haCameraCard extends HTMLElement {
   _deviceId() { return this._config.device_id || firstDevice(this._hass); }
 
   _entities() {
-    const id = this._deviceId();
-    return Object.values(this._hass.entities ?? {})
-      .filter((e) => e.device_id === id && !e.hidden && this._hass.states[e.entity_id]);
+    return deviceEntities(this._hass, this._deviceId());
   }
+
+  _visible(key) { return isShown(this._config, key); }
 
   _find(domain, oid) {
     return this._entities().find((e) => e.entity_id.startsWith(`${domain}.`) && objectId(e) === oid);
@@ -371,21 +376,25 @@ class Ios2haCameraCard extends HTMLElement {
     const device = this._hass.devices?.[this._deviceId()];
     this._title = el("h2", { text: device?.name_by_user || device?.name || "iPhone Camera" });
     this._sub = el("span", { class: "sub" });
+    const head = this._visible("header.title") || this._visible("header.status")
+      ? el("div", { class: "head" }, this._visible("header.title") ? this._title : null,
+           this._visible("header.status") ? this._sub : null)
+      : null;
     this._tabs = el("div", { class: "tabs" });
     this._stage = el("div", { class: "view" });
     new ResizeObserver(() => this._drawRegion()).observe(this._stage);
     this._below = el("div");
     this._rowsHost = el("div");
-    root.append(el("ha-card", {}, el("div", { class: "head" }, this._title, this._sub),
-                   this._tabs, this._stage, this._below, this._rowsHost));
+    root.append(el("ha-card", {}, head, this._tabs, this._stage, this._below, this._rowsHost));
     this._cameras = this._entities()
       .filter((e) => e.entity_id.startsWith("camera."))
       .sort((a, b) => CAMERA_ORDER.indexOf(objectId(a)) - CAMERA_ORDER.indexOf(objectId(b)));
-    this._views = this._cameras.map((e) => ({ id: objectId(e), entity: e.entity_id,
-                                               label: objectId(e) }));
-    if (this._find("sensor", "timelapses")) this._views.push({ id: "timelapses", label: "timelapses" });
+    const views = this._cameras.map((e) => ({ id: objectId(e), entity: e.entity_id, label: objectId(e) }));
+    if (this._find("sensor", "timelapses")) views.push({ id: "timelapses", label: "timelapses" });
+    this._views = visibleViews(views, this._config);
+    this._tabs.hidden = this._views.length <= 1;    // one tab has nothing to switch to
     this._buildRows();
-    const first = this._views.find((v) => v.id === this._config.default_view) ?? this._views[0];
+    const first = pickView(views, this._config);
     if (first) this._select(first);
   }
 
@@ -435,15 +444,17 @@ class Ios2haCameraCard extends HTMLElement {
     this._shown = { card };
     this._stage.replaceChildren(card);
     const tools = el("div", { class: "tools" });
-    if (stream) {
+    if (stream && this._visible("tool.live_view")) {
       tools.append(el("button", {
         class: this._live ? "on" : "", text: this._live ? "Stop live view" : "Live view",
         title: "Keeps the phone streaming while it is shown",
         onclick: () => { this._live = !this._live; this._showCamera(view); },
       }));
     }
-    if (view.id === "still" && REGION.every((oid) => this._find("number", oid))) this._regionTools(tools);
-    this._below.replaceChildren(tools);
+    const region = this._visible("tool.colour_region") && REGION.every((oid) => this._find("number", oid));
+    const reference = this._visible("tool.colour_reference") && this._find("button", "set_colour_reference");
+    if (view.id === "still" && (region || reference)) this._regionTools(tools, region, reference);
+    this._below.replaceChildren(...(tools.children.length ? [tools] : []));
   }
 
   // -- the colour region, drawn on the still --
@@ -466,7 +477,23 @@ class Ios2haCameraCard extends HTMLElement {
     });
   }
 
-  _regionTools(tools) {
+  // `region`: the region picker and overlay; `reference`: the colour reference
+  // button entity, or false. Either may be left out by the card's `hide`.
+  _regionTools(tools, region, reference) {
+    const error = el("span", { class: "error" });
+    if (region) this._regionPicker(tools, error);
+    if (reference) {
+      const refState = el("span", { class: "muted" });
+      this._refState = refState;
+      tools.append(el("button", { text: "Set colour reference", onclick: () =>
+        this._hass.callService("button", "press", { entity_id: reference.entity_id })
+          .catch((err) => { error.textContent = err.message ?? String(err); }) }), refState);
+    }
+    tools.append(error);
+    this._drawRegion();
+  }
+
+  _regionPicker(tools, error) {
     this._overlay = el("div", { class: "region", hidden: true });
     const glass = el("div", { class: "glass", hidden: true });
     this._stage.append(this._overlay, glass);
@@ -516,18 +543,7 @@ class Ios2haCameraCard extends HTMLElement {
     };
     pick.addEventListener("click", () => setPicking(!this._picking));
     const show = el("input", { type: "checkbox", onchange: (ev) => { this._showRegion = ev.target.checked; this._drawRegion(); } });
-    const error = el("span", { class: "error" });
-    const reference = this._find("button", "set_colour_reference");
-    const refState = el("span", { class: "muted" });
-    this._refState = refState;
     tools.append(pick, el("label", { class: "muted" }, show, " Show region"));
-    if (reference) {
-      tools.append(el("button", { text: "Set colour reference", onclick: () =>
-        this._hass.callService("button", "press", { entity_id: reference.entity_id })
-          .catch((err) => { error.textContent = err.message ?? String(err); }) }), refState);
-    }
-    tools.append(error);
-    this._drawRegion();
   }
 
   // -- timelapses --
@@ -538,9 +554,11 @@ class Ios2haCameraCard extends HTMLElement {
 
   _buildTimelapses() {
     const tl = {};
+    // A hidden player still keeps its picker, unshown: Delete acts on the newest.
+    tl.player = this._visible("timelapse.player");
     tl.video = el("video", { controls: true, playsinline: true, preload: "metadata", hidden: true });
     tl.empty = el("div", { class: "tools muted", text: "No timelapses built yet." });
-    this._stage.replaceChildren(tl.video, tl.empty);
+    this._stage.replaceChildren(...(tl.player ? [tl.video, tl.empty] : []));
     tl.pick = el("select", { onchange: () => this._play(true) });
     tl.status = el("span", { class: "muted" });
     tl.error = el("span", { class: "error" });
@@ -550,16 +568,18 @@ class Ios2haCameraCard extends HTMLElement {
     tl.inputs = {};
     const fields = el("div", { class: "fields" });
     for (const [name, f] of Object.entries(service?.fields ?? {})) {
-      if (name === "device_id") continue;
+      if (name === "device_id" || !this._visible(`timelapse.field.${name}`)) continue;   // a hidden field takes its default
       const input = this._fieldInput(f);
       if (!input) continue;
       tl.inputs[name] = input;
       fields.append(el("label", { title: f.description ?? "" }, f.name ?? name, input));
     }
     tl.form.append(fields, el("div", {}, el("button", { type: "submit", text: "Build timelapse" })));
-    this._below.replaceChildren(el("div", { class: "tools" }, tl.pick, tl.del, tl.status, tl.error),
-                                service ? tl.form : el("div", { class: "tools muted",
-                                  text: "Building needs ios2ha-camera 2.16.0 or later." }));
+    const build = !this._visible("timelapse.build") ? null : service ? tl.form
+      : el("div", { class: "tools muted", text: "Building needs ios2ha-camera 2.16.0 or later." });
+    this._below.replaceChildren(el("div", { class: "tools" }, tl.player ? tl.pick : null,
+                                   this._visible("timelapse.delete") ? tl.del : null, tl.status, tl.error),
+                                ...(build ? [build] : []));
     this._tl = tl;
     this._tlSignature = null;
     this._updateTimelapses(true);
@@ -617,6 +637,7 @@ class Ios2haCameraCard extends HTMLElement {
     const tl = this._tl;
     const name = tl.pick.value;
     const entry = this._catalogue()[name];
+    if (!tl.player) return;   // nothing to play into
     if (!entry) { tl.video.hidden = true; tl.video.removeAttribute("src"); this._playing = null; return; }
     const key = `${name}@${entry.built}`;
     if (!force && this._playing === key) return;
@@ -672,8 +693,10 @@ class Ios2haCameraCard extends HTMLElement {
   _buildRows() {
     this._rows = [];
     const entities = this._entities().filter((e) => !e.entity_id.startsWith("camera."));
-    const sections = SECTIONS.map(([category, , title]) => {
-      const list = entities.filter((e) => (e.entity_category ?? null) === category);
+    const open = new Set(openSections(this._config));
+    const sections = SECTIONS.map(([category, key, title]) => {
+      if (!this._visible(`section.${key}`)) return null;
+      const list = entities.filter((e) => (e.entity_category ?? null) === category && this._visible(`row.${objectId(e)}`));
       if (!list.length) return null;
       const rows = el("div", { class: "rows" });
       for (const e of list) {
@@ -683,7 +706,7 @@ class Ios2haCameraCard extends HTMLElement {
         rows.append(row);
       }
       const d = el("details", {}, el("summary", { text: `${title} (${list.length})` }), rows);
-      if (category === null) d.open = true;
+      d.open = open.has(key);
       return d;
     });
     this._rowsHost.replaceChildren(...sections.filter(Boolean));
@@ -699,19 +722,28 @@ class Ios2haCameraCardEditor extends HTMLElement {
     if (!this._hass || !this._config) return;
     if (!this._form) {
       this._form = document.createElement("ha-form");
-      this._form.computeLabel = (s) => ({ device_id: "Camera", default_view: "Show first" })[s.name] ?? s.name;
+      this._form.computeLabel = editorLabel;
       this._form.addEventListener("value-changed", (ev) => {
-        this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: ev.detail.value },
-                                                              bubbles: true, composed: true }));
+        const config = fromFormData(this._hass, this._config, ev.detail.value);
+        this.dispatchEvent(new CustomEvent("config-changed", { detail: { config }, bubbles: true, composed: true }));
       });
       this.append(this._form);
     }
     this._form.hass = this._hass;
-    this._form.data = this._config;
-    this._form.schema = [
-      { name: "device_id", selector: { device: { integration: DOMAIN } } },
-      { name: "default_view", selector: { select: { options: [...CAMERA_ORDER, "timelapses"] } } },
-    ];
+    // hass changes with every state change; a new schema or data object would
+    // redraw the form each time, closing whatever group was open.
+    const schema = editorSchema(this._hass, this._config);
+    const schemaKey = JSON.stringify(schema);
+    if (schemaKey !== this._schemaKey) {
+      this._schemaKey = schemaKey;
+      this._form.schema = schema;
+    }
+    const data = toFormData(this._hass, this._config);
+    const dataKey = JSON.stringify(data);
+    if (dataKey !== this._dataKey) {
+      this._dataKey = dataKey;
+      this._form.data = data;
+    }
   }
 }
 

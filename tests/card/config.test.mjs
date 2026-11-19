@@ -170,3 +170,99 @@ test("editor schema: device, show-first limited to visible tabs, collapsed group
     assert.equal(f.selector.select.mode, "list");
   }
 });
+
+// -- the card as drawn --
+
+import { defined, walk } from "./load-card.mjs";
+
+async function drawn(config) {
+  const Card = defined.get("ios2ha-camera-card");
+  const c = new Card();
+  c.setConfig({ type: "custom:ios2ha-camera-card", device_id: "dev1", ...config });
+  c.hass = fakeHass();
+  await c._render();
+  return [...walk(c)];
+}
+const byClass = (els, name) => els.filter((e) => e.className?.split(" ").includes(name));
+const byTag = (els, tag) => els.filter((e) => e.localName === tag);
+const sectionsOf = (els) => byTag(els, "details").map((d) => ({
+  title: d.children.find((x) => x.localName === "summary")?.textContent ?? "", open: d.open,
+}));
+const buttonTexts = (els) => byTag(els, "button").map((b) => b.textContent);
+
+test("every tab hidden: no tab bar, an empty stage, no throw", async () => {
+  const els = await drawn({ hide: ["tab.still", "tab.stacked", "tab.live", "tab.timelapses"] });
+  const [tabs] = byClass(els, "tabs");
+  assert.ok(tabs.hidden || tabs.children.length === 0);
+  assert.deepEqual(byClass(els, "view")[0].children, []);
+  assert.ok(sectionsOf(els).length > 0, "sections still draw");
+});
+
+test("one tab left: the tab bar hides itself", async () => {
+  const els = await drawn({ hide: ["tab.stacked", "tab.live", "tab.timelapses"] });
+  assert.equal(byClass(els, "tabs")[0].hidden, true);
+});
+
+test("a hidden section is not drawn", async () => {
+  const els = await drawn({ hide: ["section.diagnostics"] });
+  assert.ok(!sectionsOf(els).some((s) => s.title.startsWith("Diagnostics")));
+  assert.ok(sectionsOf(els).some((s) => s.title.startsWith("Controls")));
+});
+
+test("open chooses the sections unfolded on load", async () => {
+  const sections = sectionsOf(await drawn({ open: ["configuration"] }));
+  assert.equal(sections.find((s) => s.title.startsWith("Configuration")).open, true);
+  assert.equal(sections.find((s) => s.title.startsWith("Controls")).open, false);
+  const byDefault = sectionsOf(await drawn({}));
+  assert.equal(byDefault.find((s) => s.title.startsWith("Controls")).open, true);
+});
+
+test("a hidden row is not drawn, and a section left empty is not drawn", async () => {
+  const els = await drawn({ hide: ["row.on_demand", "row.battery_level"] });
+  const rows = byTag(els, "entity-row").map((r) => r.config.entity);
+  assert.ok(!rows.includes("switch.ios2ha_camera_on_demand"));
+  assert.ok(rows.includes("sensor.ios2ha_camera_legacy_thing"));
+  assert.ok(!sectionsOf(els).some((s) => s.title.startsWith("Diagnostics")));
+});
+
+test("header parts follow their keys; both hidden means no header", async () => {
+  assert.equal(byClass(await drawn({ hide: ["header.title", "header.status"] }), "head").length, 0);
+  const els = await drawn({ hide: ["header.status"] });
+  assert.equal(byClass(els, "sub").length, 0);
+  assert.equal(byTag(els, "h2").length, 1);
+});
+
+test("tool.live_view hides the Live view button", async () => {
+  assert.ok(buttonTexts(await drawn({ default_view: "stacked" })).includes("Live view"));
+  assert.ok(!buttonTexts(await drawn({ default_view: "stacked", hide: ["tool.live_view"] })).includes("Live view"));
+});
+
+test("timelapse parts follow their keys", async () => {
+  const all = await drawn({ default_view: "timelapses" });
+  assert.ok(buttonTexts(all).includes("Delete"));
+  assert.ok(buttonTexts(all).includes("Build timelapse"));
+  const trimmed = await drawn({ default_view: "timelapses",
+                                hide: ["timelapse.delete", "timelapse.field.fps"] });
+  assert.ok(!buttonTexts(trimmed).includes("Delete"));
+  const labels = byTag(trimmed, "label").map((l) => l.children[0]);
+  assert.ok(labels.includes("Start") && !labels.includes("Frames per second"));
+  const noBuild = await drawn({ default_view: "timelapses", hide: ["timelapse.build", "timelapse.player"] });
+  assert.ok(!buttonTexts(noBuild).includes("Build timelapse"));
+  assert.equal(byTag(noBuild, "video").length, 0);
+});
+
+test("the editor shows the schema and saves through fromFormData", () => {
+  const Editor = defined.get("ios2ha-camera-card-editor");
+  const ed = new Editor();
+  const cfg = { type: "custom:ios2ha-camera-card", device_id: "dev1" };
+  ed.setConfig(cfg);
+  ed.hass = fakeHass();
+  const form = ed.children[0];
+  assert.deepEqual(form.schema, editorSchema(fakeHass(), cfg));
+  assert.deepEqual(form.data, toFormData(fakeHass(), cfg));
+  let saved = null;
+  ed.addEventListener("config-changed", (ev) => { saved = ev.detail.config; });
+  const data = { ...form.data, shown_tabs: form.data.shown_tabs.filter((k) => k !== "tab.live") };
+  form.dispatchEvent(Object.assign(new Event("value-changed"), { detail: { value: data } }));
+  assert.deepEqual(saved, { ...cfg, hide: ["tab.live"] });
+});
