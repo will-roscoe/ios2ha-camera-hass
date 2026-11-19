@@ -39,6 +39,8 @@ the address of the service, for example `http://camera-host.lan:8099`. A bare
 `camera-host.lan:8099` is accepted and read as `http://`. There is nothing else
 to fill in: the API has no authentication.
 
+<img src="https://github.com/will-roscoe/ios2ha-camera-hass/raw/main/docs/images/setup.png" alt="The ios2ha-camera setup dialog asking for the address of the service, with the hint: the host and port of the service, for example camera-host.lan:8099." width="460">
+
 If the address does not work, the form says which of four things went wrong:
 
 | Message | What it means |
@@ -75,6 +77,8 @@ you see is never a stale partial one.
 The service builds timelapses from its own archive, on request; this integration
 gives you all of it through Home Assistant:
 
+<img src="https://github.com/will-roscoe/ios2ha-camera-hass/raw/main/docs/images/timelapses.jpg" alt="The card's timelapses tab: a daytime timelapse of rooftops playing, a picker listing the built timelapses with a Delete button, and the build form with fields for range, duration, start, end, name, at, interval, sun, sun offset, tolerance, fps, width, every and quality." width="640">
+
 - **Buttons** `button.ios2ha_camera_build_timelapse_12h` / `_24h` / `_7d` / `_1mo`
   build that rolling range.
 - **The action `ios2ha_camera.build_timelapse`** builds anything else: a `range`,
@@ -101,6 +105,8 @@ data:
 
 ## The card
 
+<img src="https://github.com/will-roscoe/ios2ha-camera-hass/raw/main/docs/images/card.jpg" alt="The iPhone Camera card at night: the header with the stream state and the age of the last still, tabs for still, stacked, live, screenshot and timelapses, the stacked night still, the colour region tools, the Controls section open with its rows, and Configuration and Diagnostics folded." width="560">
+
 The integration serves a card and adds it to your dashboards' resources itself:
 
 ```yaml
@@ -119,6 +125,8 @@ only through Home Assistant, so it works wherever your dashboard does.
 
 Every option is in the card's visual editor: each tab, tool, section and row is a
 checkbox, ticked while it shows. In YAML the same choices are two lists:
+
+<img src="https://github.com/will-roscoe/ios2ha-camera-hass/raw/main/docs/images/card-editor.png" alt="The card's edit dialog: Camera and Show first at the top, then collapsed groups for Header, Tabs, Tools, Controls, Configuration and Diagnostics; Header is open with Name and Status line ticked, and Diagnostics is open with Show section ticked and Open by default unticked, beside a live preview of the card." width="700">
 
 - `open`: the sections unfolded when the card loads: `controls`, `configuration`
   and `diagnostics`. Unset, only Controls opens.
@@ -139,6 +147,8 @@ checkbox, ticked while it shows. In YAML the same choices are two lists:
 
 A section whose rows are all hidden is left out too. A card showing only the latest
 still, with nothing under it:
+
+<img src="https://github.com/will-roscoe/ios2ha-camera-hass/raw/main/docs/images/card-trimmed.jpg" alt="The trimmed card: just the header and the latest still, with no tabs, tools or sections." width="560">
 
 ```yaml
 type: custom:ios2ha-camera-card
