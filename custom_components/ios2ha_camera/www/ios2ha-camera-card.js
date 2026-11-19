@@ -18,7 +18,12 @@ const PREFIX = "ios2ha_camera_";
 const CAMERA_ORDER = ["still", "stacked", "live", "screenshot"];
 const STREAMS = new Set(["live", "stacked"]);   // keep the phone awake while shown
 const REGION = ["colour_region_x0", "colour_region_y0", "colour_region_x1", "colour_region_y1"];
-const SECTIONS = [[null, "Controls"], ["config", "Configuration"], ["diagnostic", "Diagnostics"]];
+// [entity category, section key used by `open` and `hide`, title]
+const SECTIONS = [[null, "controls", "Controls"], ["config", "configuration", "Configuration"],
+                  ["diagnostic", "diagnostics", "Diagnostics"]];
+
+/** The section key (`controls`, `configuration`, `diagnostics`) for each entity category. */
+export const SECTION_KEYS = Object.fromEntries(SECTIONS.map(([category, key]) => [category, key]));
 
 // Which of the service's objects an entity is. The integration sets each entity's
 // translation key to it, which survives a renamed entity id and the `_2` a second
@@ -54,6 +59,212 @@ function relative(iso) {
   if (s < 3600) return `${Math.round(s / 60)} min ago`;
   if (s < 86400) return `${Math.round(s / 3600)} h ago`;
   return `${Math.round(s / 86400)} d ago`;
+}
+
+// -- what the card shows: `hide` and `open` --
+//
+// `hide` lists the parts left out, by key: header.title, header.status, tab.<camera>,
+// tab.timelapses, tool.live_view, tool.colour_region, tool.colour_reference,
+// timelapse.player, timelapse.delete, timelapse.build, timelapse.field.<name>,
+// section.<key> and row.<object id>. Anything not listed shows, so an entity a later
+// release adds appears on a card already trimmed. `open` lists the sections unfolded
+// when the card loads.
+
+function asList(value) {
+  if (value == null) return [];
+  return (Array.isArray(value) ? value : [value]).map(String);
+}
+
+/** Return the keys `config.hide` leaves out, as a set; a single string counts as one key. */
+export function hiddenKeys(config) {
+  return new Set(asList(config?.hide));
+}
+
+/** Return the section keys unfolded when the card loads: `config.open`, or `["controls"]` when unset. */
+export function openSections(config) {
+  return config?.open == null ? ["controls"] : asList(config.open);
+}
+
+/** Return whether the part named by `key` shows on a card with this `config`. */
+export function isShown(config, key) {
+  return !hiddenKeys(config).has(key);
+}
+
+function deviceEntities(hass, deviceId) {
+  return Object.values(hass.entities ?? {})
+    .filter((e) => e.device_id === deviceId && !e.hidden && hass.states?.[e.entity_id]);
+}
+
+function rowLabel(hass, entity, deviceName) {
+  const name = hass.states[entity.entity_id]?.attributes?.friendly_name ?? entity.entity_id;
+  return deviceName && name.startsWith(`${deviceName} `) ? name.slice(deviceName.length + 1) : name;
+}
+
+/**
+ * Return what a camera device offers the card, for the card and its editor alike.
+ *
+ * :param hass: Home Assistant's frontend object (entities, states, devices, services).
+ * :param deviceId: the camera's device id.
+ * :returns: ``{tabs, sections, fields}``: ``tabs`` lists camera object ids in
+ *   CAMERA_ORDER, then ``"timelapses"`` when the device has the timelapses sensor;
+ *   ``sections`` maps ``controls``, ``configuration`` and ``diagnostics`` to the
+ *   ``{key, label}`` of each row (``key`` is ``row.<object id>``, ``label`` the
+ *   entity's name without the device's); ``fields`` lists the ``{name, label}`` of
+ *   each build_timelapse field except ``device_id`` (empty without that action).
+ */
+export function deviceParts(hass, deviceId) {
+  const entities = deviceEntities(hass, deviceId);
+  const device = hass.devices?.[deviceId];
+  const deviceName = device?.name_by_user || device?.name;
+  const tabs = entities.filter((e) => e.entity_id.startsWith("camera.")).map(objectId)
+    .sort((a, b) => CAMERA_ORDER.indexOf(a) - CAMERA_ORDER.indexOf(b));
+  if (entities.some((e) => e.entity_id.startsWith("sensor.") && objectId(e) === "timelapses")) tabs.push("timelapses");
+  const sections = Object.fromEntries(SECTIONS.map(([, key]) => [key, []]));
+  for (const e of entities) {
+    const key = SECTION_KEYS[e.entity_category ?? null];
+    if (e.entity_id.startsWith("camera.") || !key) continue;
+    sections[key].push({ key: `row.${objectId(e)}`, label: rowLabel(hass, e, deviceName) });
+  }
+  const fields = Object.entries(hass.services?.[DOMAIN]?.build_timelapse?.fields ?? {})
+    .filter(([name]) => name !== "device_id")
+    .map(([name, f]) => ({ name, label: f.name ?? name }));
+  return { tabs, sections, fields };
+}
+
+/** Return the views (each with an `id`) whose tab `config` does not hide. */
+export function visibleViews(views, config) {
+  return views.filter((v) => isShown(config, `tab.${v.id}`));
+}
+
+/** Return the view to show first: the visible `default_view`, else the first visible view, else null. */
+export function pickView(views, config) {
+  const shown = visibleViews(views, config);
+  return shown.find((v) => v.id === config?.default_view) ?? shown[0] ?? null;
+}
+
+// -- the editor's form --
+//
+// Every option of the editor's checkbox lists is a hide key, ticked while that part
+// shows, except `open.<section>`, ticked while the section starts open. So the YAML
+// keeps a short `hide` list while the form shows everything there is.
+
+const capital = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const HEADER_OPTIONS = [["header.title", "Name"], ["header.status", "Status line"]];
+const CAMERA_TOOLS = [["tool.live_view", "Live view button"], ["tool.colour_region", "Colour region"],
+                      ["tool.colour_reference", "Colour reference"]];
+const TIMELAPSE_TOOLS = [["timelapse.player", "Timelapse player"], ["timelapse.delete", "Delete timelapse"],
+                         ["timelapse.build", "Build form"]];
+const SECTION_ICONS = { controls: "mdi:tune", configuration: "mdi:cog", diagnostics: "mdi:information-outline" };
+const EDITOR_LABELS = { device_id: "Camera", default_view: "Show first", shown_header: "Header",
+                        shown_tabs: "Tabs", shown_tools: "Tools" };
+
+function formLists(parts) {
+  const timelapses = parts.tabs.includes("timelapses");
+  const lists = {
+    shown_header: HEADER_OPTIONS,
+    shown_tabs: parts.tabs.map((t) => [`tab.${t}`, capital(t)]),
+    shown_tools: [...CAMERA_TOOLS, ...(timelapses ? TIMELAPSE_TOOLS : []),
+                  ...(timelapses ? parts.fields : []).map((f) => [`timelapse.field.${f.name}`, `Build form: ${f.label}`])],
+  };
+  for (const [, key] of SECTIONS) {
+    const rows = parts.sections[key];
+    if (!rows.length) continue;
+    lists[`section_${key}`] = [[`section.${key}`, "Show section"], [`open.${key}`, "Open by default"]];
+    lists[`rows_${key}`] = rows.map((r) => [r.key, r.label]);
+  }
+  return lists;
+}
+
+function checklist(name, options) {
+  return { name, selector: { select: { multiple: true, mode: "list",
+                                       options: options.map(([value, label]) => ({ value, label })) } } };
+}
+
+function editorDevice(hass, config, data = {}) {
+  return data.device_id || config?.device_id || firstDevice(hass);
+}
+
+/**
+ * Return the ha-form schema for the card's edit dialog: Camera, Show first (the
+ * visible tabs), then collapsed groups of checkboxes for the header, tabs, tools and
+ * each section that has rows (Show section, Open by default, then a box per row).
+ */
+export function editorSchema(hass, config = {}) {
+  const parts = deviceParts(hass, editorDevice(hass, config));
+  const lists = formLists(parts);
+  const group = (title, icon, schema) => ({ type: "expandable", name: "", flatten: true, title, icon, schema });
+  const tabs = parts.tabs.filter((t) => isShown(config, `tab.${t}`));
+  return [
+    { name: "device_id", selector: { device: { integration: DOMAIN } } },
+    { name: "default_view",
+      selector: { select: { mode: "dropdown", options: tabs.map((t) => ({ value: t, label: capital(t) })) } } },
+    group("Header", "mdi:page-layout-header", [checklist("shown_header", lists.shown_header)]),
+    group("Tabs", "mdi:tab", [checklist("shown_tabs", lists.shown_tabs)]),
+    group("Tools", "mdi:tools", [checklist("shown_tools", lists.shown_tools)]),
+    ...SECTIONS.filter(([, key]) => lists[`rows_${key}`]).map(([, key, title]) =>
+      group(`${title} (${parts.sections[key].length})`, SECTION_ICONS[key],
+            [checklist(`section_${key}`, lists[`section_${key}`]), checklist(`rows_${key}`, lists[`rows_${key}`])])),
+  ];
+}
+
+/** ha-form `computeLabel`: the label of a field in the card's edit dialog. */
+export function editorLabel(schema) {
+  if (schema.name.startsWith("section_")) return "Section";
+  if (schema.name.startsWith("rows_")) return "Rows";
+  return EDITOR_LABELS[schema.name] ?? schema.name;
+}
+
+/** Return the editor form's data for `config`: each checkbox list holds its ticked options. */
+export function toFormData(hass, config = {}) {
+  const hidden = hiddenKeys(config);
+  const open = new Set(openSections(config));
+  const data = {};
+  if (config.device_id !== undefined) data.device_id = config.device_id;
+  if (config.default_view !== undefined) data.default_view = config.default_view;
+  for (const [name, options] of Object.entries(formLists(deviceParts(hass, editorDevice(hass, config))))) {
+    data[name] = options.map(([v]) => v)
+      .filter((v) => (v.startsWith("open.") ? open.has(v.slice(5)) : !hidden.has(v)));
+  }
+  return data;
+}
+
+/**
+ * Return the card config the editor form's `data` describes, starting from `config`.
+ *
+ * ``hide`` becomes every offered option left unticked, plus keys in ``config.hide``
+ * the form does not offer (an entity missing right now keeps its setting); ``open``
+ * becomes the ticked ``open.*`` options, plus open sections the form does not offer.
+ * ``hide`` is dropped when empty and ``open`` when it is the default ``["controls"]``;
+ * every other key passes through. A list missing from ``data`` leaves its options as
+ * ``config`` had them.
+ */
+export function fromFormData(hass, config = {}, data = {}) {
+  const hiddenBefore = hiddenKeys(config);
+  const openBefore = new Set(openSections(config));
+  const offered = new Set();
+  const hide = [];
+  const open = [];
+  for (const [name, options] of Object.entries(formLists(deviceParts(hass, editorDevice(hass, config, data))))) {
+    const ticked = name in data ? new Set(asList(data[name])) : null;
+    for (const [v] of options) {
+      offered.add(v);
+      if (v.startsWith("open.")) {
+        if (ticked ? ticked.has(v) : openBefore.has(v.slice(5))) open.push(v.slice(5));
+      } else if (ticked ? !ticked.has(v) : hiddenBefore.has(v)) {
+        hide.push(v);
+      }
+    }
+  }
+  hide.push(...[...hiddenBefore].filter((k) => !offered.has(k)));
+  open.push(...[...openBefore].filter((s) => !offered.has(`open.${s}`)));
+  const out = { ...config };
+  if (data.device_id !== undefined) out.device_id = data.device_id;
+  if (data.default_view !== undefined) out.default_view = data.default_view;
+  delete out.hide;
+  delete out.open;
+  if (hide.length) out.hide = hide;
+  if (!(open.length === 1 && open[0] === "controls")) out.open = open;
+  return out;
 }
 
 const STYLE = `
@@ -461,7 +672,7 @@ class Ios2haCameraCard extends HTMLElement {
   _buildRows() {
     this._rows = [];
     const entities = this._entities().filter((e) => !e.entity_id.startsWith("camera."));
-    const sections = SECTIONS.map(([category, title]) => {
+    const sections = SECTIONS.map(([category, , title]) => {
       const list = entities.filter((e) => (e.entity_category ?? null) === category);
       if (!list.length) return null;
       const rows = el("div", { class: "rows" });
